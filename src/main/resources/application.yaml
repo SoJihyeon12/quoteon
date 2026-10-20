@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: QuoteOn
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/quote_db?serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
