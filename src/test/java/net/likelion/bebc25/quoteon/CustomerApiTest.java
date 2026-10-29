@@ -322,6 +322,72 @@ class CustomerApiTest {
     }
 
     @Test
+    void readsOwnCustomerDetail() throws Exception {
+        SalesMember seller = loginActiveSales();
+        MvcResult created = mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"상세고객","customerType":"BUSINESS","phone":"01033334444","email":"detail@example.com","address":"부산시","memo":"상세 메모"}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number id = JsonPath.read(created.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+
+        mockMvc.perform(get("/api/customers/{id}", id.longValue()).session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(jsonId(id.longValue())))
+                .andExpect(jsonPath("$.name").value("상세고객"))
+                .andExpect(jsonPath("$.customerType").value("BUSINESS"))
+                .andExpect(jsonPath("$.phone").value("01033334444"))
+                .andExpect(jsonPath("$.email").value("detail@example.com"))
+                .andExpect(jsonPath("$.address").value("부산시"))
+                .andExpect(jsonPath("$.memo").value("상세 메모"))
+                .andExpect(jsonPath("$.memberId").doesNotExist())
+                .andExpect(jsonPath("$.status").doesNotExist());
+    }
+
+    @Test
+    void rejectsAnotherMembersCustomerDetailAndMissingCustomer() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        MvcResult created = mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"비밀고객","customerType":"COMPANY","phone":"01077778888","email":"secret@example.com","address":"대구시","memo":"비공개"}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number id = JsonPath.read(created.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+
+        mockMvc.perform(get("/api/customers/{id}", id.longValue()).session(other.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CUSTOMER_ACCESS_DENIED"))
+                .andExpect(jsonPath("$.name").doesNotExist())
+                .andExpect(jsonPath("$.customerType").doesNotExist())
+                .andExpect(jsonPath("$.phone").doesNotExist())
+                .andExpect(jsonPath("$.email").doesNotExist())
+                .andExpect(jsonPath("$.address").doesNotExist())
+                .andExpect(jsonPath("$.memo").doesNotExist());
+
+        mockMvc.perform(get("/api/customers/{id}", 999999999L).session(seller.session()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CUSTOMER_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("고객을 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.name").doesNotExist());
+    }
+
+    @Test
+    void rejectsUnauthenticatedCustomerDetail() throws Exception {
+        mockMvc.perform(get("/api/customers/{id}", 1))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
     void rejectsUnauthenticatedCustomerList() throws Exception {
         mockMvc.perform(get("/api/customers"))
                 .andExpect(status().isUnauthorized())

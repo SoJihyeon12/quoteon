@@ -41,6 +41,15 @@ public class CustomerService {
         );
     }
 
+    public CustomerResponse get(long memberId, long customerId) {
+        CustomerDetail detail = customerRepository.findDetailById(customerId)
+                .orElseThrow(CustomerNotFoundException::new);
+        if (detail.memberId() != memberId) {
+            throw new CustomerAccessDeniedException();
+        }
+        return detail.customer();
+    }
+
     public CustomerPageResponse list(long memberId, String keyword, int page, int size) {
         if (page < DEFAULT_PAGE) {
             throw new InvalidCustomerQueryException("페이지 번호는 0 이상이어야 합니다.");

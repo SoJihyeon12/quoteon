@@ -1,5 +1,6 @@
 package net.likelion.bebc25.quoteon.customer;
 
+import net.likelion.bebc25.quoteon.customer.dto.CustomerResponse;
 import net.likelion.bebc25.quoteon.customer.dto.CustomerSummaryResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -63,6 +64,26 @@ public class CustomerRepository {
             throw new IllegalStateException("customer id was not generated");
         }
         return key.longValue();
+    }
+
+    public Optional<CustomerDetail> findDetailById(long id) {
+        String sql = """
+                SELECT id, member_id, name, customer_type, phone, email, address, memo
+                FROM customer
+                WHERE id = ?
+                """;
+        return jdbcTemplate.query(sql, ps -> ps.setLong(1, id), (rs, rowNum) -> new CustomerDetail(
+                rs.getLong("member_id"),
+                new CustomerResponse(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getString("customer_type"),
+                        rs.getString("phone"),
+                        rs.getString("email"),
+                        rs.getString("address"),
+                        rs.getString("memo")
+                )
+        )).stream().findFirst();
     }
 
     public Optional<CustomerRef> findById(long id) {
