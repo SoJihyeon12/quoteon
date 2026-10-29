@@ -66,6 +66,34 @@ public class CustomerRepository {
         return key.longValue();
     }
 
+    public int update(
+            long id,
+            long memberId,
+            String name,
+            String customerType,
+            String phone,
+            String email,
+            String address,
+            String memo
+    ) {
+        String sql = """
+                UPDATE customer
+                SET name = ?, customer_type = ?, phone = ?, email = ?, address = ?, memo = ?
+                WHERE id = ? AND member_id = ?
+                """;
+        return jdbcTemplate.update(
+                sql,
+                name,
+                customerType,
+                phone,
+                email,
+                address,
+                memo,
+                id,
+                memberId
+        );
+    }
+
     public Optional<CustomerDetail> findDetailById(long id) {
         String sql = """
                 SELECT id, member_id, name, customer_type, phone, email, address, memo

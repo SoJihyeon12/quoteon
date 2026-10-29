@@ -42,12 +42,33 @@ public class CustomerService {
     }
 
     public CustomerResponse get(long memberId, long customerId) {
-        CustomerDetail detail = customerRepository.findDetailById(customerId)
-                .orElseThrow(CustomerNotFoundException::new);
-        if (detail.memberId() != memberId) {
-            throw new CustomerAccessDeniedException();
+        return requireOwned(memberId, customerId).customer();
+    }
+
+    public CustomerResponse update(long memberId, long customerId, CreateCustomerRequest request) {
+        requireOwned(memberId, customerId);
+        int updated = customerRepository.update(
+                customerId,
+                memberId,
+                request.name(),
+                request.customerType(),
+                request.phone(),
+                request.email(),
+                request.address(),
+                request.memo()
+        );
+        if (updated != 1) {
+            throw new CustomerNotFoundException();
         }
-        return detail.customer();
+        return new CustomerResponse(
+                customerId,
+                request.name(),
+                request.customerType(),
+                request.phone(),
+                request.email(),
+                request.address(),
+                request.memo()
+        );
     }
 
     public CustomerPageResponse list(long memberId, String keyword, int page, int size) {
@@ -67,6 +88,15 @@ public class CustomerService {
                 (long) page * size
         );
         return new CustomerPageResponse(items, page, size, totalElements, totalPages);
+    }
+
+    private CustomerDetail requireOwned(long memberId, long customerId) {
+        CustomerDetail detail = customerRepository.findDetailById(customerId)
+                .orElseThrow(CustomerNotFoundException::new);
+        if (detail.memberId() != memberId) {
+            throw new CustomerAccessDeniedException();
+        }
+        return detail;
     }
 
     private static String normalizeKeyword(String keyword) {
