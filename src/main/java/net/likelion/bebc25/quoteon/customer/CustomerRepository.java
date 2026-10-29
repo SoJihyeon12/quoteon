@@ -26,6 +26,10 @@ public class CustomerRepository {
                     OR name LIKE ? ESCAPE '\\\\'
                     OR phone LIKE ? ESCAPE '\\\\'
                   )
+              AND (
+                    ? = 0
+                    OR customer_type = ?
+                  )
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -126,10 +130,10 @@ public class CustomerRepository {
         )).stream().findFirst();
     }
 
-    public long countSelectable(long memberId, String keyword) {
+    public long countSelectable(long memberId, String keyword, String customerType) {
         String sql = "SELECT COUNT(*) FROM customer WHERE " + SELECTABLE_FILTER;
         Long count = jdbcTemplate.query(sql, ps -> {
-            bindSelectable(ps, memberId, keyword);
+            bindSelectable(ps, memberId, keyword, customerType);
         }, rs -> {
             if (!rs.next()) {
                 return 0L;
@@ -139,7 +143,13 @@ public class CustomerRepository {
         return count == null ? 0 : count;
     }
 
-    public List<CustomerSummaryResponse> findSelectable(long memberId, String keyword, int limit, long offset) {
+    public List<CustomerSummaryResponse> findSelectable(
+            long memberId,
+            String keyword,
+            String customerType,
+            int limit,
+            long offset
+    ) {
         String sql = """
                 SELECT id, name, phone, customer_type
                 FROM customer
@@ -149,7 +159,7 @@ public class CustomerRepository {
                 LIMIT ? OFFSET ?
                 """;
         return jdbcTemplate.query(sql, ps -> {
-            int next = bindSelectable(ps, memberId, keyword);
+            int next = bindSelectable(ps, memberId, keyword, customerType);
             ps.setInt(next, limit);
             ps.setLong(next + 1, offset);
         }, (rs, rowNum) -> new CustomerSummaryResponse(
@@ -160,15 +170,23 @@ public class CustomerRepository {
         ));
     }
 
-    private int bindSelectable(PreparedStatement statement, long memberId, String keyword) throws SQLException {
+    private int bindSelectable(
+            PreparedStatement statement,
+            long memberId,
+            String keyword,
+            String customerType
+    ) throws SQLException {
         boolean hasKeyword = keyword != null;
+        boolean hasType = customerType != null;
         String pattern = hasKeyword ? toContainsPattern(keyword) : "%";
         statement.setLong(1, memberId);
         statement.setString(2, ACTIVE_STATUS);
         statement.setInt(3, hasKeyword ? 1 : 0);
         statement.setString(4, pattern);
         statement.setString(5, pattern);
-        return 6;
+        statement.setInt(6, hasType ? 1 : 0);
+        statement.setString(7, hasType ? customerType : "");
+        return 8;
     }
 
     private static String toContainsPattern(String keyword) {

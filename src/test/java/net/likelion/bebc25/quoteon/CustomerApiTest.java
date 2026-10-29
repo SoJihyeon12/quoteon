@@ -45,10 +45,10 @@ class CustomerApiTest {
     void listsOnlyOwnActiveCustomersInIdOrder() throws Exception {
         SalesMember seller = loginActiveSales();
         SalesMember other = loginActiveSales();
-        long olderId = insertCustomer(seller.id(), "나중에만든이름", "01011110000", "COMPANY", "ACTIVE");
-        long newerId = insertCustomer(seller.id(), "먼저보일이름", "01022220000", "BUSINESS", "ACTIVE");
-        insertCustomer(seller.id(), "비활성고객", "01033330000", "COMPANY", "INACTIVE");
-        long foreignId = insertCustomer(other.id(), "다른회원고객", "01044440000", "COMPANY", "ACTIVE");
+        long olderId = insertCustomer(seller.id(), "나중에만든이름", "01011110000", "기업", "ACTIVE");
+        long newerId = insertCustomer(seller.id(), "먼저보일이름", "01022220000", "개인", "ACTIVE");
+        insertCustomer(seller.id(), "비활성고객", "01033330000", "기업", "INACTIVE");
+        long foreignId = insertCustomer(other.id(), "다른회원고객", "01044440000", "기업", "ACTIVE");
 
         mockMvc.perform(get("/api/customers")
                         .session(seller.session())
@@ -62,7 +62,7 @@ class CustomerApiTest {
                 .andExpect(jsonPath("$.items[0].id").value(jsonId(olderId)))
                 .andExpect(jsonPath("$.items[0].name").value("나중에만든이름"))
                 .andExpect(jsonPath("$.items[0].phone").value("01011110000"))
-                .andExpect(jsonPath("$.items[0].customerType").value("COMPANY"))
+                .andExpect(jsonPath("$.items[0].customerType").value("기업"))
                 .andExpect(jsonPath("$.items[0].memberId").doesNotExist())
                 .andExpect(jsonPath("$.items[0].email").doesNotExist())
                 .andExpect(jsonPath("$.items[0].address").doesNotExist())
@@ -70,7 +70,7 @@ class CustomerApiTest {
                 .andExpect(jsonPath("$.items[0].status").doesNotExist())
                 .andExpect(jsonPath("$.items[1].id").value(jsonId(newerId)))
                 .andExpect(jsonPath("$.items[1].name").value("먼저보일이름"))
-                .andExpect(jsonPath("$.items[1].customerType").value("BUSINESS"));
+                .andExpect(jsonPath("$.items[1].customerType").value("개인"));
 
         MvcResult otherList = mockMvc.perform(get("/api/customers").session(other.session()))
                 .andExpect(status().isOk())
@@ -84,11 +84,11 @@ class CustomerApiTest {
     @Test
     void searchesNameOrPhoneByContains() throws Exception {
         SalesMember seller = loginActiveSales();
-        long hongId = insertCustomer(seller.id(), "홍길동", "01011112222", "COMPANY", "ACTIVE");
-        long kimId = insertCustomer(seller.id(), "김철수", "01099998888", "BUSINESS", "ACTIVE");
-        insertCustomer(seller.id(), "홍길동", "01055550000", "COMPANY", "INACTIVE");
+        long hongId = insertCustomer(seller.id(), "홍길동", "01011112222", "기업", "ACTIVE");
+        long kimId = insertCustomer(seller.id(), "김철수", "01099998888", "개인", "ACTIVE");
+        insertCustomer(seller.id(), "홍길동", "01055550000", "기업", "INACTIVE");
         SalesMember other = loginActiveSales();
-        insertCustomer(other.id(), "홍길동", "01011112222", "COMPANY", "ACTIVE");
+        insertCustomer(other.id(), "홍길동", "01011112222", "기업", "ACTIVE");
 
         mockMvc.perform(get("/api/customers")
                         .session(seller.session())
@@ -132,9 +132,9 @@ class CustomerApiTest {
     @Test
     void paginatesAndRejectsInvalidPage() throws Exception {
         SalesMember seller = loginActiveSales();
-        long firstId = insertCustomer(seller.id(), "고객1", "01010000001", "COMPANY", "ACTIVE");
-        long secondId = insertCustomer(seller.id(), "고객2", "01010000002", "COMPANY", "ACTIVE");
-        long thirdId = insertCustomer(seller.id(), "고객3", "01010000003", "COMPANY", "ACTIVE");
+        long firstId = insertCustomer(seller.id(), "고객1", "01010000001", "기업", "ACTIVE");
+        long secondId = insertCustomer(seller.id(), "고객2", "01010000002", "기업", "ACTIVE");
+        long thirdId = insertCustomer(seller.id(), "고객3", "01010000003", "기업", "ACTIVE");
 
         mockMvc.perform(get("/api/customers")
                         .session(seller.session())
@@ -187,11 +187,11 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"memberId":999999999,"status":"INACTIVE","name":"홍길동","customerType":"COMPANY","phone":"01011112222","email":"hong@example.com","address":"서울시","memo":"첫 상담"}
+                                {"memberId":999999999,"status":"INACTIVE","name":"홍길동","customerType":"기업","phone":"01011112222","email":"hong@example.com","address":"서울시","memo":"첫 상담"}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("홍길동"))
-                .andExpect(jsonPath("$.customerType").value("COMPANY"))
+                .andExpect(jsonPath("$.customerType").value("기업"))
                 .andExpect(jsonPath("$.phone").value("01011112222"))
                 .andExpect(jsonPath("$.email").value("hong@example.com"))
                 .andExpect(jsonPath("$.address").value("서울시"))
@@ -209,7 +209,7 @@ class CustomerApiTest {
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.items[0].id").value(jsonId(id.longValue())))
                 .andExpect(jsonPath("$.items[0].name").value("홍길동"))
-                .andExpect(jsonPath("$.items[0].customerType").value("COMPANY"));
+                .andExpect(jsonPath("$.items[0].customerType").value("기업"));
 
         mockMvc.perform(get("/api/customers").session(other.session()))
                 .andExpect(status().isOk())
@@ -218,7 +218,7 @@ class CustomerApiTest {
     }
 
     @Test
-    void acceptsExistingTypeCodesWithoutRequiringOptionalFields() throws Exception {
+    void acceptsIndividualCustomerWithoutOptionalFields() throws Exception {
         SalesMember seller = loginActiveSales();
 
         mockMvc.perform(post("/api/customers")
@@ -226,11 +226,11 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"김철수","customerType":"BUSINESS"}
+                                {"name":"김철수","customerType":"개인"}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("김철수"))
-                .andExpect(jsonPath("$.customerType").value("BUSINESS"))
+                .andExpect(jsonPath("$.customerType").value("개인"))
                 .andExpect(jsonPath("$.phone").value(nullValue()))
                 .andExpect(jsonPath("$.email").value(nullValue()))
                 .andExpect(jsonPath("$.address").value(nullValue()))
@@ -246,7 +246,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"홍길동","customerType":"COMPANY","email":"not-an-email"}
+                                {"name":"홍길동","customerType":"기업","email":"not-an-email"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
@@ -256,7 +256,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"%s","customerType":"COMPANY"}
+                                {"name":"%s","customerType":"기업"}
                                 """.formatted("가".repeat(101))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
@@ -269,13 +269,13 @@ class CustomerApiTest {
                                 {"name":"홍길동","customerType":"%s"}
                                 """.formatted("T".repeat(31))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("고객 유형은 30자 이하로 입력해 주세요."));
+                .andExpect(jsonPath("$.message").value("고객 유형은 개인 또는 기업만 선택할 수 있습니다."));
         mockMvc.perform(post("/api/customers")
                         .with(csrf())
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"홍길동","customerType":"COMPANY","phone":"%s"}
+                                {"name":"홍길동","customerType":"기업","phone":"%s"}
                                 """.formatted("1".repeat(21))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("연락처는 20자 이하로 입력해 주세요."));
@@ -284,7 +284,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"홍길동","customerType":"COMPANY","email":"a@%s.co"}
+                                {"name":"홍길동","customerType":"기업","email":"a@%s.co"}
                                 """.formatted("b".repeat(252))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("이메일은 255자 이하로 입력해 주세요."));
@@ -293,7 +293,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"홍길동","customerType":"COMPANY","address":"%s"}
+                                {"name":"홍길동","customerType":"기업","address":"%s"}
                                 """.formatted("주".repeat(501))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("주소는 500자 이하로 입력해 주세요."));
@@ -304,7 +304,7 @@ class CustomerApiTest {
     void rejectsMissingSessionAndMissingCsrfWhenCreatingCustomer() throws Exception {
         SalesMember seller = loginActiveSales();
         String body = """
-                {"name":"홍길동","customerType":"COMPANY"}
+                {"name":"홍길동","customerType":"기업"}
                 """;
 
         mockMvc.perform(post("/api/customers")
@@ -330,7 +330,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"상세고객","customerType":"BUSINESS","phone":"01033334444","email":"detail@example.com","address":"부산시","memo":"상세 메모"}
+                                {"name":"상세고객","customerType":"개인","phone":"01033334444","email":"detail@example.com","address":"부산시","memo":"상세 메모"}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -340,7 +340,7 @@ class CustomerApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(jsonId(id.longValue())))
                 .andExpect(jsonPath("$.name").value("상세고객"))
-                .andExpect(jsonPath("$.customerType").value("BUSINESS"))
+                .andExpect(jsonPath("$.customerType").value("개인"))
                 .andExpect(jsonPath("$.phone").value("01033334444"))
                 .andExpect(jsonPath("$.email").value("detail@example.com"))
                 .andExpect(jsonPath("$.address").value("부산시"))
@@ -358,7 +358,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"비밀고객","customerType":"COMPANY","phone":"01077778888","email":"secret@example.com","address":"대구시","memo":"비공개"}
+                                {"name":"비밀고객","customerType":"기업","phone":"01077778888","email":"secret@example.com","address":"대구시","memo":"비공개"}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -389,7 +389,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"수정전","customerType":"COMPANY","phone":"01011112222","email":"before@example.com","address":"서울시","memo":"수정 전"}
+                                {"name":"수정전","customerType":"기업","phone":"01011112222","email":"before@example.com","address":"서울시","memo":"수정 전"}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -400,12 +400,12 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"수정후","customerType":"BUSINESS","phone":"01099990000","email":"after@example.com","address":"인천시","memo":"수정 후"}
+                                {"name":"수정후","customerType":"개인","phone":"01099990000","email":"after@example.com","address":"인천시","memo":"수정 후"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(jsonId(id.longValue())))
                 .andExpect(jsonPath("$.name").value("수정후"))
-                .andExpect(jsonPath("$.customerType").value("BUSINESS"))
+                .andExpect(jsonPath("$.customerType").value("개인"))
                 .andExpect(jsonPath("$.phone").value("01099990000"))
                 .andExpect(jsonPath("$.email").value("after@example.com"))
                 .andExpect(jsonPath("$.address").value("인천시"))
@@ -416,7 +416,7 @@ class CustomerApiTest {
         mockMvc.perform(get("/api/customers/{id}", id.longValue()).session(seller.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("수정후"))
-                .andExpect(jsonPath("$.customerType").value("BUSINESS"))
+                .andExpect(jsonPath("$.customerType").value("개인"))
                 .andExpect(jsonPath("$.phone").value("01099990000"))
                 .andExpect(jsonPath("$.email").value("after@example.com"))
                 .andExpect(jsonPath("$.address").value("인천시"))
@@ -428,7 +428,7 @@ class CustomerApiTest {
                 .andExpect(jsonPath("$.items[0].id").value(jsonId(id.longValue())))
                 .andExpect(jsonPath("$.items[0].name").value("수정후"))
                 .andExpect(jsonPath("$.items[0].phone").value("01099990000"))
-                .andExpect(jsonPath("$.items[0].customerType").value("BUSINESS"));
+                .andExpect(jsonPath("$.items[0].customerType").value("개인"));
     }
 
     @Test
@@ -440,7 +440,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"비밀고객","customerType":"COMPANY","phone":"01077778888","email":"secret@example.com","address":"대구시","memo":"비공개"}
+                                {"name":"비밀고객","customerType":"기업","phone":"01077778888","email":"secret@example.com","address":"대구시","memo":"비공개"}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -451,7 +451,7 @@ class CustomerApiTest {
                         .session(other.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"탈취","customerType":"BUSINESS","phone":"01000000000","email":"stolen@example.com","address":"변경","memo":"변경"}
+                                {"name":"탈취","customerType":"개인","phone":"01000000000","email":"stolen@example.com","address":"변경","memo":"변경"}
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("CUSTOMER_ACCESS_DENIED"))
@@ -465,7 +465,7 @@ class CustomerApiTest {
         mockMvc.perform(get("/api/customers/{id}", id.longValue()).session(seller.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("비밀고객"))
-                .andExpect(jsonPath("$.customerType").value("COMPANY"))
+                .andExpect(jsonPath("$.customerType").value("기업"))
                 .andExpect(jsonPath("$.phone").value("01077778888"))
                 .andExpect(jsonPath("$.email").value("secret@example.com"))
                 .andExpect(jsonPath("$.address").value("대구시"))
@@ -476,7 +476,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"없는고객","customerType":"COMPANY"}
+                                {"name":"없는고객","customerType":"기업"}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CUSTOMER_NOT_FOUND"))
@@ -492,7 +492,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"유지고객","customerType":"COMPANY","phone":"01011112222","email":"keep@example.com","address":"서울시","memo":"유지"}
+                                {"name":"유지고객","customerType":"기업","phone":"01011112222","email":"keep@example.com","address":"서울시","memo":"유지"}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -503,7 +503,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"유지고객","customerType":"COMPANY","email":"not-an-email"}
+                                {"name":"유지고객","customerType":"기업","email":"not-an-email"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
@@ -513,7 +513,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"%s","customerType":"COMPANY"}
+                                {"name":"%s","customerType":"기업"}
                                 """.formatted("가".repeat(101))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("고객명은 100자 이하로 입력해 주세요."));
@@ -525,13 +525,13 @@ class CustomerApiTest {
                                 {"name":"유지고객","customerType":"%s"}
                                 """.formatted("T".repeat(31))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("고객 유형은 30자 이하로 입력해 주세요."));
+                .andExpect(jsonPath("$.message").value("고객 유형은 개인 또는 기업만 선택할 수 있습니다."));
         mockMvc.perform(put("/api/customers/{id}", id.longValue())
                         .with(csrf())
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"유지고객","customerType":"COMPANY","phone":"%s"}
+                                {"name":"유지고객","customerType":"기업","phone":"%s"}
                                 """.formatted("1".repeat(21))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("연락처는 20자 이하로 입력해 주세요."));
@@ -540,7 +540,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"유지고객","customerType":"COMPANY","email":"a@%s.co"}
+                                {"name":"유지고객","customerType":"기업","email":"a@%s.co"}
                                 """.formatted("b".repeat(252))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("이메일은 255자 이하로 입력해 주세요."));
@@ -549,7 +549,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"유지고객","customerType":"COMPANY","address":"%s"}
+                                {"name":"유지고객","customerType":"기업","address":"%s"}
                                 """.formatted("주".repeat(501))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("주소는 500자 이하로 입력해 주세요."));
@@ -571,7 +571,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"소유확인","customerType":"COMPANY","phone":"01011112222"}
+                                {"name":"소유확인","customerType":"기업","phone":"01011112222"}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -582,7 +582,7 @@ class CustomerApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"memberId":999999999,"status":"INACTIVE","name":"이름만변경","customerType":"BUSINESS","phone":"01022223333","email":"owned@example.com","address":"광주시","memo":"소유 유지"}
+                                {"memberId":999999999,"status":"INACTIVE","name":"이름만변경","customerType":"개인","phone":"01022223333","email":"owned@example.com","address":"광주시","memo":"소유 유지"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("이름만변경"))
@@ -597,9 +597,9 @@ class CustomerApiTest {
     @Test
     void rejectsUnauthenticatedAndMissingCsrfWhenUpdatingCustomer() throws Exception {
         SalesMember seller = loginActiveSales();
-        long id = insertCustomer(seller.id(), "인증고객", "01011112222", "COMPANY", "ACTIVE");
+        long id = insertCustomer(seller.id(), "인증고객", "01011112222", "기업", "ACTIVE");
         String body = """
-                {"name":"변경","customerType":"BUSINESS"}
+                {"name":"변경","customerType":"개인"}
                 """;
 
         mockMvc.perform(put("/api/customers/{id}", id)
@@ -618,7 +618,7 @@ class CustomerApiTest {
         mockMvc.perform(get("/api/customers/{id}", id).session(seller.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("인증고객"))
-                .andExpect(jsonPath("$.customerType").value("COMPANY"));
+                .andExpect(jsonPath("$.customerType").value("기업"));
     }
 
     @Test
@@ -633,6 +633,157 @@ class CustomerApiTest {
         mockMvc.perform(get("/api/customers"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void filtersOwnActiveCustomersByTypeKeywordAndPage() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        long individualHong = insertCustomer(seller.id(), "홍길동", "01011112222", "개인", "ACTIVE");
+        long individualKim = insertCustomer(seller.id(), "김개인", "01022223333", "개인", "ACTIVE");
+        long individualThird = insertCustomer(seller.id(), "이개인", "01033334444", "개인", "ACTIVE");
+        long corporateHong = insertCustomer(seller.id(), "홍길동상사", "01011119999", "기업", "ACTIVE");
+        insertCustomer(seller.id(), "비활성개인", "01055556666", "개인", "INACTIVE");
+        long foreignIndividual = insertCustomer(other.id(), "홍길동", "01011112222", "개인", "ACTIVE");
+
+        mockMvc.perform(get("/api/customers").session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(4))
+                .andExpect(jsonPath("$.items", hasSize(4)));
+
+        mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", " 개인 "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.items", hasSize(3)))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(individualHong)))
+                .andExpect(jsonPath("$.items[0].customerType").value("개인"))
+                .andExpect(jsonPath("$.items[1].id").value(jsonId(individualKim)))
+                .andExpect(jsonPath("$.items[2].id").value(jsonId(individualThird)));
+
+        mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", "기업"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(corporateHong)))
+                .andExpect(jsonPath("$.items[0].name").value("홍길동상사"))
+                .andExpect(jsonPath("$.items[0].customerType").value("기업"));
+
+        mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", "개인")
+                        .param("keyword", "홍길동"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(individualHong)));
+
+        mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", "기업")
+                        .param("keyword", "홍길동"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(corporateHong)));
+
+        mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", "개인")
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(individualHong)))
+                .andExpect(jsonPath("$.items[1].id").value(jsonId(individualKim)));
+
+        mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", "개인")
+                        .param("page", "1")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(individualThird)));
+
+        MvcResult sellerIndividuals = mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", "개인"))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertFalseContains(
+                sellerIndividuals.getResponse().getContentAsString(StandardCharsets.UTF_8),
+                foreignIndividual
+        );
+
+        mockMvc.perform(get("/api/customers")
+                        .session(other.session())
+                        .param("customerType", "개인"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(foreignIndividual)));
+
+        mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", "COMPANY"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("고객 유형은 개인 또는 기업만 선택할 수 있습니다."));
+        mockMvc.perform(get("/api/customers")
+                        .session(seller.session())
+                        .param("customerType", "BUSINESS"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("고객 유형은 개인 또는 기업만 선택할 수 있습니다."));
+    }
+
+    @Test
+    void rejectsCustomerTypesOtherThanIndividualAndCorporate() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long id = insertCustomer(seller.id(), "유지고객", "01011112222", "기업", "ACTIVE");
+        String rejected = """
+                {"name":"변경","customerType":"%s"}
+                """;
+
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(rejected.formatted("COMPANY")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("고객 유형은 개인 또는 기업만 선택할 수 있습니다."));
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(rejected.formatted("BUSINESS")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("고객 유형은 개인 또는 기업만 선택할 수 있습니다."));
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(rejected.formatted("")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("고객 유형은 개인 또는 기업만 선택할 수 있습니다."));
+        mockMvc.perform(put("/api/customers/{id}", id)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(rejected.formatted("COMPANY")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("고객 유형은 개인 또는 기업만 선택할 수 있습니다."));
+
+        mockMvc.perform(get("/api/customers/{id}", id).session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("유지고객"))
+                .andExpect(jsonPath("$.customerType").value("기업"));
+        assertEquals(1, customerCount(seller.id()));
     }
 
     private SalesMember loginActiveSales() throws Exception {

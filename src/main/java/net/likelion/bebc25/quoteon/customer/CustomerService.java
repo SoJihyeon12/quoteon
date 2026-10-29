@@ -71,7 +71,7 @@ public class CustomerService {
         );
     }
 
-    public CustomerPageResponse list(long memberId, String keyword, int page, int size) {
+    public CustomerPageResponse list(long memberId, String keyword, String customerType, int page, int size) {
         if (page < DEFAULT_PAGE) {
             throw new InvalidCustomerQueryException("페이지 번호는 0 이상이어야 합니다.");
         }
@@ -79,11 +79,13 @@ public class CustomerService {
             throw new InvalidCustomerQueryException("페이지 크기는 1 이상 100 이하여야 합니다.");
         }
         String normalizedKeyword = normalizeKeyword(keyword);
-        long totalElements = customerRepository.countSelectable(memberId, normalizedKeyword);
+        String normalizedType = normalizeCustomerType(customerType);
+        long totalElements = customerRepository.countSelectable(memberId, normalizedKeyword, normalizedType);
         int totalPages = totalElements == 0 ? 0 : (int) ((totalElements + size - 1) / size);
         List<CustomerSummaryResponse> items = customerRepository.findSelectable(
                 memberId,
                 normalizedKeyword,
+                normalizedType,
                 size,
                 (long) page * size
         );
@@ -97,6 +99,20 @@ public class CustomerService {
             throw new CustomerAccessDeniedException();
         }
         return detail;
+    }
+
+    private static String normalizeCustomerType(String customerType) {
+        if (customerType == null) {
+            return null;
+        }
+        String trimmed = customerType.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (!CustomerTypeCodes.isAllowed(trimmed)) {
+            throw new InvalidCustomerQueryException(CustomerTypeCodes.INVALID_MESSAGE);
+        }
+        return trimmed;
     }
 
     private static String normalizeKeyword(String keyword) {

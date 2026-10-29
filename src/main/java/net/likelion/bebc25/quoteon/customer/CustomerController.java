@@ -50,10 +50,11 @@ public class CustomerController {
     @GetMapping
     public CustomerPageResponse list(
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String customerType,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        return customerService.list(currentMemberId(), keyword, page, size);
+        return customerService.list(currentMemberId(), keyword, customerType, page, size);
     }
 
     private long currentMemberId() {
