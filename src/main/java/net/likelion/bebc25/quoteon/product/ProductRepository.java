@@ -8,11 +8,12 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class ProductRepository {
 
-    private static final String ON_SALE_STATUS = "ACTIVE";
+    public static final String ON_SALE_STATUS = "ACTIVE";
 
     private static final RowMapper<ProductResponse> ROW_MAPPER = ProductRepository::mapRow;
 
@@ -52,6 +53,15 @@ public class ProductRepository {
         }, ROW_MAPPER);
     }
 
+    public Optional<ProductDetail> findById(long id) {
+        String sql = """
+                SELECT id, product_code, name, sale_price, status
+                FROM product
+                WHERE id = ?
+                """;
+        return jdbcTemplate.query(sql, ps -> ps.setLong(1, id), ProductRepository::mapDetail).stream().findFirst();
+    }
+
     private static ProductResponse mapRow(ResultSet rs, int rowNum) throws SQLException {
         return new ProductResponse(
                 rs.getLong("id"),
@@ -61,6 +71,16 @@ public class ProductRepository {
                 rs.getLong("category_id"),
                 rs.getString("category_name"),
                 rs.getString("image_path"),
+                rs.getString("status")
+        );
+    }
+
+    private static ProductDetail mapDetail(ResultSet rs, int rowNum) throws SQLException {
+        return new ProductDetail(
+                rs.getLong("id"),
+                rs.getString("product_code"),
+                rs.getString("name"),
+                rs.getBigDecimal("sale_price"),
                 rs.getString("status")
         );
     }
