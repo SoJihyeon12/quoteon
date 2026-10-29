@@ -1,6 +1,8 @@
 package net.likelion.bebc25.quoteon.customer;
 
+import net.likelion.bebc25.quoteon.customer.dto.CreateCustomerRequest;
 import net.likelion.bebc25.quoteon.customer.dto.CustomerPageResponse;
+import net.likelion.bebc25.quoteon.customer.dto.CustomerResponse;
 import net.likelion.bebc25.quoteon.customer.dto.CustomerSummaryResponse;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +18,27 @@ public class CustomerService {
 
     public CustomerService(CustomerRepository customerRepository) {
         this.customerRepository = customerRepository;
+    }
+
+    public CustomerResponse create(long memberId, CreateCustomerRequest request) {
+        long id = customerRepository.insert(
+                memberId,
+                request.name(),
+                request.customerType(),
+                request.phone(),
+                request.email(),
+                request.address(),
+                request.memo()
+        );
+        return new CustomerResponse(
+                id,
+                request.name(),
+                request.customerType(),
+                request.phone(),
+                request.email(),
+                request.address(),
+                request.memo()
+        );
     }
 
     public CustomerPageResponse list(long memberId, String keyword, int page, int size) {

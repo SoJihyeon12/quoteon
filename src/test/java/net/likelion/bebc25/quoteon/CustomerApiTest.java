@@ -19,7 +19,10 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -174,6 +177,151 @@ class CustomerApiTest {
     }
 
     @Test
+    void createsCustomerForTheAuthenticatedMember() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+
+        MvcResult result = mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"memberId":999999999,"status":"INACTIVE","name":"홍길동","customerType":"COMPANY","phone":"01011112222","email":"hong@example.com","address":"서울시","memo":"첫 상담"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("홍길동"))
+                .andExpect(jsonPath("$.customerType").value("COMPANY"))
+                .andExpect(jsonPath("$.phone").value("01011112222"))
+                .andExpect(jsonPath("$.email").value("hong@example.com"))
+                .andExpect(jsonPath("$.address").value("서울시"))
+                .andExpect(jsonPath("$.memo").value("첫 상담"))
+                .andExpect(jsonPath("$.memberId").doesNotExist())
+                .andExpect(jsonPath("$.status").doesNotExist())
+                .andReturn();
+        Number id = JsonPath.read(result.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+        StoredCustomer stored = storedCustomer(id.longValue());
+        assertEquals(seller.id(), stored.memberId());
+        assertEquals("ACTIVE", stored.status());
+
+        mockMvc.perform(get("/api/customers").session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(id.longValue())))
+                .andExpect(jsonPath("$.items[0].name").value("홍길동"))
+                .andExpect(jsonPath("$.items[0].customerType").value("COMPANY"));
+
+        mockMvc.perform(get("/api/customers").session(other.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void acceptsExistingTypeCodesWithoutRequiringOptionalFields() throws Exception {
+        SalesMember seller = loginActiveSales();
+
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"김철수","customerType":"BUSINESS"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("김철수"))
+                .andExpect(jsonPath("$.customerType").value("BUSINESS"))
+                .andExpect(jsonPath("$.phone").value(nullValue()))
+                .andExpect(jsonPath("$.email").value(nullValue()))
+                .andExpect(jsonPath("$.address").value(nullValue()))
+                .andExpect(jsonPath("$.memo").value(nullValue()));
+    }
+
+    @Test
+    void rejectsInvalidEmailAndValuesLongerThanColumns() throws Exception {
+        SalesMember seller = loginActiveSales();
+
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"홍길동","customerType":"COMPANY","email":"not-an-email"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("이메일 형식을 확인해 주세요."));
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"%s","customerType":"COMPANY"}
+                                """.formatted("가".repeat(101))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("고객명은 100자 이하로 입력해 주세요."));
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"홍길동","customerType":"%s"}
+                                """.formatted("T".repeat(31))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("고객 유형은 30자 이하로 입력해 주세요."));
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"홍길동","customerType":"COMPANY","phone":"%s"}
+                                """.formatted("1".repeat(21))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("연락처는 20자 이하로 입력해 주세요."));
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"홍길동","customerType":"COMPANY","email":"a@%s.co"}
+                                """.formatted("b".repeat(252))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("이메일은 255자 이하로 입력해 주세요."));
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"홍길동","customerType":"COMPANY","address":"%s"}
+                                """.formatted("주".repeat(501))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("주소는 500자 이하로 입력해 주세요."));
+        assertEquals(0, customerCount(seller.id()));
+    }
+
+    @Test
+    void rejectsMissingSessionAndMissingCsrfWhenCreatingCustomer() throws Exception {
+        SalesMember seller = loginActiveSales();
+        String body = """
+                {"name":"홍길동","customerType":"COMPANY"}
+                """;
+
+        mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        mockMvc.perform(post("/api/customers")
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CSRF"));
+        assertEquals(0, customerCount(seller.id()));
+    }
+
+    @Test
     void rejectsUnauthenticatedCustomerList() throws Exception {
         mockMvc.perform(get("/api/customers"))
                 .andExpect(status().isUnauthorized())
@@ -232,6 +380,23 @@ class CustomerApiTest {
         return key.longValue();
     }
 
+    private StoredCustomer storedCustomer(long customerId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT member_id, status
+                FROM customer
+                WHERE id = ?
+                """, (rs, rowNum) -> new StoredCustomer(rs.getLong("member_id"), rs.getString("status")), customerId);
+    }
+
+    private int customerCount(long memberId) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM customer WHERE member_id = ?",
+                Integer.class,
+                memberId
+        );
+        return count == null ? 0 : count;
+    }
+
     private static void assertFalseContains(String body, long id) {
         if (body.contains("\"id\":" + id) || body.contains("\"id\": " + id)) {
             throw new AssertionError("other member list included customer " + id);
@@ -243,5 +408,8 @@ class CustomerApiTest {
     }
 
     private record SalesMember(long id, MockHttpSession session) {
+    }
+
+    private record StoredCustomer(long memberId, String status) {
     }
 }

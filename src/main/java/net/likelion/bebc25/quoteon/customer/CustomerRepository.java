@@ -2,10 +2,13 @@ package net.likelion.bebc25.quoteon.customer;
 
 import net.likelion.bebc25.quoteon.customer.dto.CustomerSummaryResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +31,38 @@ public class CustomerRepository {
 
     public CustomerRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public long insert(
+            long memberId,
+            String name,
+            String customerType,
+            String phone,
+            String email,
+            String address,
+            String memo
+    ) {
+        String sql = """
+                INSERT INTO customer (member_id, name, customer_type, phone, email, address, memo)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """;
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, memberId);
+            statement.setString(2, name);
+            statement.setString(3, customerType);
+            statement.setString(4, phone);
+            statement.setString(5, email);
+            statement.setString(6, address);
+            statement.setString(7, memo);
+            return statement;
+        }, keyHolder);
+        Number key = keyHolder.getKey();
+        if (key == null) {
+            throw new IllegalStateException("customer id was not generated");
+        }
+        return key.longValue();
     }
 
     public Optional<CustomerRef> findById(long id) {
