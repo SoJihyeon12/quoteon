@@ -5,6 +5,7 @@ import net.likelion.bebc25.quoteon.auth.InvalidCredentialsException;
 import net.likelion.bebc25.quoteon.auth.MemberAccessDeniedException;
 import net.likelion.bebc25.quoteon.customer.CustomerAccessDeniedException;
 import net.likelion.bebc25.quoteon.customer.CustomerNotFoundException;
+import net.likelion.bebc25.quoteon.customer.InvalidCustomerQueryException;
 import net.likelion.bebc25.quoteon.member.EmailAlreadyExistsException;
 import net.likelion.bebc25.quoteon.member.MemberNotFoundException;
 import net.likelion.bebc25.quoteon.member.MemberNotPendingException;
@@ -95,6 +96,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleDuplicateProduct(DuplicateProductException exception) {
         return ResponseEntity.badRequest()
                 .body(ApiErrorResponse.of(400, "DUPLICATE_PRODUCT", "같은 제품을 항목에 중복해서 넣을 수 없습니다."));
+    }
+
+    @ExceptionHandler(InvalidCustomerQueryException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidCustomerQuery(InvalidCustomerQueryException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(400, "VALIDATION_ERROR", exception.getMessage()));
     }
 
     @ExceptionHandler(CustomerNotFoundException.class)
