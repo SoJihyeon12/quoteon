@@ -143,7 +143,7 @@ public class ApiExceptionHandler {
                 .body(ApiErrorResponse.of(
                         HttpStatus.FORBIDDEN.value(),
                         "QUOTE_ACCESS_DENIED",
-                        "본인의 견적서만 조회할 수 있습니다."
+                        "본인의 견적서만 조회하거나 수정할 수 있습니다."
                 ));
     }
 

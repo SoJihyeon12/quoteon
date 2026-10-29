@@ -80,7 +80,55 @@ public class QuoteService {
         return response;
     }
 
+    public QuoteResponse update(long memberId, long quoteId, CreateQuoteRequest request) {
+        QuoteResponse response = transactionTemplate.execute(status -> replaceQuote(memberId, quoteId, request));
+        if (response == null) {
+            throw new IllegalStateException("quote was not stored");
+        }
+        return response;
+    }
+
     private QuoteResponse writeQuote(long memberId, CreateQuoteRequest request) {
+        PricedQuote priced = priceQuote(memberId, request);
+        long quoteId = insertQuote(
+                memberId,
+                priced.customerId(),
+                priced.supplyAmount(),
+                priced.vatAmount(),
+                priced.totalAmount(),
+                request
+        );
+        quoteRepository.insertItems(quoteId, priced.lines());
+        return quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new IllegalStateException("quote was not stored"));
+    }
+
+    private QuoteResponse replaceQuote(long memberId, long quoteId, CreateQuoteRequest request) {
+        QuoteAccess access = quoteRepository.findAccessById(quoteId)
+                .orElseThrow(QuoteNotFoundException::new);
+        if (access.memberId() != memberId) {
+            throw new QuoteAccessDeniedException();
+        }
+        PricedQuote priced = priceQuote(memberId, request);
+        int updated = quoteRepository.updateQuote(
+                quoteId,
+                memberId,
+                priced.customerId(),
+                priced.supplyAmount(),
+                priced.vatAmount(),
+                priced.totalAmount(),
+                request.quoteDate()
+        );
+        if (updated != 1) {
+            throw new QuoteNotFoundException();
+        }
+        quoteRepository.deleteItems(quoteId);
+        quoteRepository.insertItems(quoteId, priced.lines());
+        return quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new IllegalStateException("quote was not stored"));
+    }
+
+    private PricedQuote priceQuote(long memberId, CreateQuoteRequest request) {
         rejectDuplicateProducts(request.items());
         CustomerRef customer = customerRepository.findById(request.customerId())
                 .orElseThrow(CustomerNotFoundException::new);
@@ -108,11 +156,7 @@ public class QuoteService {
             ));
         }
         BigDecimal vatAmount = vatAmount(supplyAmount);
-        BigDecimal totalAmount = supplyAmount.add(vatAmount);
-        long quoteId = insertQuote(memberId, customer.id(), supplyAmount, vatAmount, totalAmount, request);
-        quoteRepository.insertItems(quoteId, lines);
-        return quoteRepository.findById(quoteId)
-                .orElseThrow(() -> new IllegalStateException("quote was not stored"));
+        return new PricedQuote(customer.id(), supplyAmount, vatAmount, supplyAmount.add(vatAmount), lines);
     }
 
     static BigDecimal lineAmount(BigDecimal salePrice, int quantity) {
@@ -162,5 +206,14 @@ public class QuoteService {
             throw new IllegalStateException("quote number was not generated");
         }
         throw lastConflict;
+    }
+
+    private record PricedQuote(
+            long customerId,
+            BigDecimal supplyAmount,
+            BigDecimal vatAmount,
+            BigDecimal totalAmount,
+            List<QuoteItemWrite> lines
+    ) {
     }
 }

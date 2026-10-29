@@ -66,6 +66,36 @@ public class QuoteRepository {
         return key.longValue();
     }
 
+    public int updateQuote(
+            long quoteId,
+            long memberId,
+            long customerId,
+            BigDecimal supplyAmount,
+            BigDecimal vatAmount,
+            BigDecimal totalAmount,
+            LocalDate quoteDate
+    ) {
+        String sql = """
+                UPDATE quote
+                SET customer_id = ?, supply_amount = ?, vat_amount = ?, total_amount = ?, quote_date = ?
+                WHERE id = ? AND member_id = ?
+                """;
+        return jdbcTemplate.update(
+                sql,
+                customerId,
+                supplyAmount,
+                vatAmount,
+                totalAmount,
+                Date.valueOf(quoteDate),
+                quoteId,
+                memberId
+        );
+    }
+
+    public void deleteItems(long quoteId) {
+        jdbcTemplate.update("DELETE FROM quote_item WHERE quote_id = ?", quoteId);
+    }
+
     public void insertItems(long quoteId, List<QuoteItemWrite> items) {
         String sql = """
                 INSERT INTO quote_item (

@@ -39,6 +39,7 @@ import static org.mockito.Mockito.reset;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -400,7 +401,7 @@ class QuoteApiTest {
         mockMvc.perform(get("/api/quotes/{id}", quoteId).session(other.session()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("QUOTE_ACCESS_DENIED"))
-                .andExpect(jsonPath("$.message").value("본인의 견적서만 조회할 수 있습니다."))
+                .andExpect(jsonPath("$.message").value("본인의 견적서만 조회하거나 수정할 수 있습니다."))
                 .andExpect(jsonPath("$.quoteNumber").doesNotExist())
                 .andExpect(jsonPath("$.customerName").doesNotExist())
                 .andExpect(jsonPath("$.items").doesNotExist())
@@ -430,6 +431,213 @@ class QuoteApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.message").value("페이지 크기는 1 이상 100 이하여야 합니다."));
+    }
+
+    @Test
+    void updatesOwnQuoteFromCurrentProductPrices() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "기존고객");
+        long nextCustomerId = insertCustomer(seller.id(), "수정고객");
+        long productId = insertProduct("UPD-" + token(), "수정전제품", "100.00", "ACTIVE");
+        long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(productId, 1));
+        String quoteNumber = quoteNumber(quoteId);
+        long previousItemId = itemId(quoteId);
+        jdbcTemplate.update("UPDATE quote SET status = 'SENT' WHERE id = ?", quoteId);
+        jdbcTemplate.update(
+                "UPDATE product SET name = ?, sale_price = ? WHERE id = ?",
+                "수정후제품",
+                new BigDecimal("15.00"),
+                productId
+        );
+
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerId":%d,"quoteDate":"2026-11-02","quoteNumber":"Q-HACK","status":"CANCELLED","items":[%s]}
+                                """.formatted(nextCustomerId, itemJson(productId, 1))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(jsonId(quoteId)))
+                .andExpect(jsonPath("$.quoteNumber").value(quoteNumber))
+                .andExpect(jsonPath("$.customerId").value(jsonId(nextCustomerId)))
+                .andExpect(jsonPath("$.customerName").value("수정고객"))
+                .andExpect(jsonPath("$.quoteDate").value("2026-11-02"))
+                .andExpect(jsonPath("$.status").value("SENT"))
+                .andExpect(jsonPath("$.supplyAmount").value(15.00))
+                .andExpect(jsonPath("$.vatAmount").value(2))
+                .andExpect(jsonPath("$.totalAmount").value(17.00))
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].productId").value(jsonId(productId)))
+                .andExpect(jsonPath("$.items[0].productName").value("수정후제품"))
+                .andExpect(jsonPath("$.items[0].productCode", startsWith("UPD-")))
+                .andExpect(jsonPath("$.items[0].salePrice").value(15.00))
+                .andExpect(jsonPath("$.items[0].quantity").value(1))
+                .andExpect(jsonPath("$.items[0].amount").value(15.00));
+
+        StoredQuote stored = storedQuote(quoteId);
+        assertEquals(seller.id(), stored.memberId());
+        assertEquals(nextCustomerId, stored.customerId());
+        assertEquals("SENT", stored.status());
+        assertEquals(quoteNumber, quoteNumber(quoteId));
+        assertEquals("2026-11-02", quoteDate(quoteId));
+        assertEquals(0, new BigDecimal("15.00").compareTo(stored.supplyAmount()));
+        assertEquals(0, new BigDecimal("2").compareTo(stored.vatAmount()));
+        assertEquals(0, new BigDecimal("17.00").compareTo(stored.totalAmount()));
+        assertEquals(1, itemCount(quoteId));
+        assertNotEquals(previousItemId, itemId(quoteId));
+        assertEquals(0, quoteCount(customerId));
+    }
+
+    @Test
+    void rejectsUpdateOfAnotherMembersQuote() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "소유고객");
+        long otherCustomerId = insertCustomer(other.id(), "다른고객");
+        long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(productId("SH-600"), 1));
+        String quoteNumber = quoteNumber(quoteId);
+
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(other.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(otherCustomerId, "2026-11-02", itemJson(productId("OF-100"), 3))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_ACCESS_DENIED"))
+                .andExpect(jsonPath("$.message").value("본인의 견적서만 조회하거나 수정할 수 있습니다."))
+                .andExpect(jsonPath("$.quoteNumber").doesNotExist())
+                .andExpect(jsonPath("$.items").doesNotExist())
+                .andExpect(jsonPath("$.totalAmount").doesNotExist());
+        assertOriginalShoeQuote(quoteId, quoteNumber, customerId);
+        assertEquals(0, quoteCount(otherCustomerId));
+    }
+
+    @Test
+    void rejectsMissingQuoteUpdateAndMissingCredentials() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "인증고객");
+        long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(productId("SH-600"), 1));
+        String quoteNumber = quoteNumber(quoteId);
+        String body = quoteJson(customerId, "2026-11-02", itemJson(productId("SH-600"), 2));
+
+        mockMvc.perform(put("/api/quotes/{id}", 999999999L)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("QUOTE_NOT_FOUND"))
+                .andExpect(jsonPath("$.quoteNumber").doesNotExist());
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CSRF"));
+        assertOriginalShoeQuote(quoteId, quoteNumber, customerId);
+    }
+
+    @Test
+    void rejectsInvalidQuoteUpdate() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "검증고객");
+        long otherCustomerId = insertCustomer(other.id(), "타인고객");
+        long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(productId("SH-600"), 1));
+        String quoteNumber = quoteNumber(quoteId);
+        long inactiveProductId = insertProduct("OFF-" + token(), "중지제품", "1000.00", "INACTIVE");
+
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(customerId, "2026-10-29", itemJson(productId("SH-600"), 0))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("수량은 1 이상이어야 합니다."));
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerId":%d,"quoteDate":"2026-10-29","items":[]}
+                                """.formatted(customerId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("견적 항목을 한 개 이상 입력해 주세요."));
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(
+                                customerId,
+                                "2026-10-29",
+                                itemJson(productId("SH-600"), 1) + "," + itemJson(productId("SH-600"), 2)
+                        )))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("DUPLICATE_PRODUCT"));
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(customerId, "2026-10-29", itemJson(999999999L, 1))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(customerId, "2026-10-29", itemJson(inactiveProductId, 1))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_ACTIVE"));
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(otherCustomerId, "2026-10-29", itemJson(productId("SH-600"), 1))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CUSTOMER_ACCESS_DENIED"));
+        assertOriginalShoeQuote(quoteId, quoteNumber, customerId);
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void rollsBackQuoteUpdateWhenItemInsertFails() throws Exception {
+        SalesMember seller = null;
+        Long customerId = null;
+        Long nextCustomerId = null;
+        try {
+            seller = loginActiveSales();
+            customerId = insertCustomer(seller.id(), "롤백고객");
+            nextCustomerId = insertCustomer(seller.id(), "롤백변경고객");
+            long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(productId("SH-600"), 1));
+            String quoteNumber = quoteNumber(quoteId);
+            doThrow(new DataIntegrityViolationException("quote item insert failed"))
+                    .when(quoteRepository)
+                    .insertItems(anyLong(), anyList());
+
+            mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                            .with(csrf())
+                            .session(seller.session())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(quoteJson(nextCustomerId, "2026-11-02", itemJson(productId("OF-100"), 4))))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.code").value("DATA_ACCESS_ERROR"));
+            assertOriginalShoeQuote(quoteId, quoteNumber, customerId);
+            assertEquals(0, quoteCount(nextCustomerId));
+        } finally {
+            deleteCustomer(customerId);
+            deleteCustomer(nextCustomerId);
+            if (seller != null) {
+                jdbcTemplate.update("DELETE FROM member WHERE id = ?", seller.id());
+            }
+        }
     }
 
     private long createQuote(SalesMember seller, long customerId, String quoteDate, String items) throws Exception {
@@ -523,6 +731,77 @@ class QuoteApiTest {
         );
         if (id == null) {
             throw new IllegalStateException("product was not found");
+        }
+        return id;
+    }
+
+    private void assertOriginalShoeQuote(long quoteId, String quoteNumber, long customerId) {
+        StoredQuote stored = storedQuote(quoteId);
+        assertEquals(customerId, stored.customerId());
+        assertEquals("DRAFT", stored.status());
+        assertEquals(0, new BigDecimal("120000.00").compareTo(stored.supplyAmount()));
+        assertEquals(0, new BigDecimal("12000").compareTo(stored.vatAmount()));
+        assertEquals(0, new BigDecimal("132000.00").compareTo(stored.totalAmount()));
+        assertEquals(quoteNumber, quoteNumber(quoteId));
+        assertEquals("2026-10-29", quoteDate(quoteId));
+        assertEquals(1, itemCount(quoteId));
+        assertEquals(productId("SH-600"), storedItemProductId(quoteId));
+    }
+
+    private void deleteCustomer(Long customerId) {
+        if (customerId == null) {
+            return;
+        }
+        jdbcTemplate.update("""
+                DELETE quote_item FROM quote_item
+                INNER JOIN quote ON quote.id = quote_item.quote_id
+                WHERE quote.customer_id = ?
+                """, customerId);
+        jdbcTemplate.update("DELETE FROM quote WHERE customer_id = ?", customerId);
+        jdbcTemplate.update("DELETE FROM customer WHERE id = ?", customerId);
+    }
+
+    private String quoteNumber(long quoteId) {
+        String quoteNumber = jdbcTemplate.queryForObject(
+                "SELECT quote_number FROM quote WHERE id = ?",
+                String.class,
+                quoteId
+        );
+        if (quoteNumber == null) {
+            throw new IllegalStateException("quote number was not stored");
+        }
+        return quoteNumber;
+    }
+
+    private String quoteDate(long quoteId) {
+        String quoteDate = jdbcTemplate.queryForObject(
+                "SELECT DATE_FORMAT(quote_date, '%Y-%m-%d') FROM quote WHERE id = ?",
+                String.class,
+                quoteId
+        );
+        if (quoteDate == null) {
+            throw new IllegalStateException("quote date was not stored");
+        }
+        return quoteDate;
+    }
+
+    private int itemCount(long quoteId) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM quote_item WHERE quote_id = ?",
+                Integer.class,
+                quoteId
+        );
+        return count == null ? 0 : count;
+    }
+
+    private long itemId(long quoteId) {
+        Long id = jdbcTemplate.queryForObject(
+                "SELECT id FROM quote_item WHERE quote_id = ? ORDER BY id LIMIT 1",
+                Long.class,
+                quoteId
+        );
+        if (id == null) {
+            throw new IllegalStateException("quote item was not stored");
         }
         return id;
     }
