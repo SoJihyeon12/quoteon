@@ -23,16 +23,21 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.util.List;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -277,6 +282,166 @@ class QuoteApiTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("CSRF"));
         assertEquals(0, quoteCount(customerId));
+    }
+
+    @Test
+    void listsOnlyOwnQuotesNewestFirst() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "목록고객");
+        long otherCustomerId = insertCustomer(other.id(), "다른고객");
+        long shoeId = productId("SH-600");
+
+        long oldest = createQuote(seller, customerId, "2026-10-27", itemJson(shoeId, 1));
+        long middle = createQuote(seller, customerId, "2026-10-28", itemJson(shoeId, 2));
+        long newest = createQuote(seller, customerId, "2026-10-29", itemJson(shoeId, 1));
+        long foreign = createQuote(other, otherCustomerId, "2026-10-29", itemJson(shoeId, 1));
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-27 09:00:00"), oldest);
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-28 09:00:00"), middle);
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-29 09:00:00"), newest);
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-30 09:00:00"), foreign);
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("memberId", String.valueOf(other.id()))
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(newest)))
+                .andExpect(jsonPath("$.items[0].customerId").value(jsonId(customerId)))
+                .andExpect(jsonPath("$.items[0].customerName").value("목록고객"))
+                .andExpect(jsonPath("$.items[0].quoteDate").value("2026-10-29"))
+                .andExpect(jsonPath("$.items[0].status").value("DRAFT"))
+                .andExpect(jsonPath("$.items[0].supplyAmount").value(120000.00))
+                .andExpect(jsonPath("$.items[0].vatAmount").value(12000))
+                .andExpect(jsonPath("$.items[0].totalAmount").value(132000.00))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-10-29T09:00:00"))
+                .andExpect(jsonPath("$.items[0].quoteNumber", startsWith("Q-20261029-")))
+                .andExpect(jsonPath("$.items[0].items").doesNotExist())
+                .andExpect(jsonPath("$.items[0].memberId").doesNotExist())
+                .andExpect(jsonPath("$.items[1].id").value(jsonId(middle)))
+                .andExpect(jsonPath("$.items[1].quoteDate").value("2026-10-28"))
+                .andExpect(jsonPath("$.items[1].supplyAmount").value(240000.00));
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("page", "1")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(oldest)));
+
+        mockMvc.perform(get("/api/quotes").session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(3));
+
+        MvcResult otherList = mockMvc.perform(get("/api/quotes").session(other.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(foreign)))
+                .andExpect(jsonPath("$.items[0].customerName").value("다른고객"))
+                .andReturn();
+        List<Number> visibleIds = JsonPath.read(
+                otherList.getResponse().getContentAsString(StandardCharsets.UTF_8),
+                "$.items[*].id"
+        );
+        assertFalse(visibleIds.stream().anyMatch(id -> id.longValue() == newest));
+    }
+
+    @Test
+    void readsOwnQuoteWithItemSnapshots() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "상세고객");
+        long shoeId = productId("SH-600");
+        long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(shoeId, 2));
+
+        mockMvc.perform(get("/api/quotes/{id}", quoteId).session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(jsonId(quoteId)))
+                .andExpect(jsonPath("$.customerId").value(jsonId(customerId)))
+                .andExpect(jsonPath("$.customerName").value("상세고객"))
+                .andExpect(jsonPath("$.quoteNumber", startsWith("Q-20261029-")))
+                .andExpect(jsonPath("$.quoteDate").value("2026-10-29"))
+                .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andExpect(jsonPath("$.supplyAmount").value(240000.00))
+                .andExpect(jsonPath("$.vatAmount").value(24000))
+                .andExpect(jsonPath("$.totalAmount").value(264000.00))
+                .andExpect(jsonPath("$.memberId").doesNotExist())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].productId").value(jsonId(shoeId)))
+                .andExpect(jsonPath("$.items[0].productName").value("화이트 신발장"))
+                .andExpect(jsonPath("$.items[0].productCode").value("SH-600"))
+                .andExpect(jsonPath("$.items[0].salePrice").value(120000.00))
+                .andExpect(jsonPath("$.items[0].quantity").value(2))
+                .andExpect(jsonPath("$.items[0].amount").value(240000.00));
+    }
+
+    @Test
+    void rejectsMissingAndOtherMembersQuote() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "소유고객");
+        long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(productId("SH-600"), 1));
+
+        mockMvc.perform(get("/api/quotes/{id}", 999999999L).session(seller.session()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("QUOTE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("견적서를 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.quoteNumber").doesNotExist())
+                .andExpect(jsonPath("$.items").doesNotExist());
+
+        mockMvc.perform(get("/api/quotes/{id}", quoteId).session(other.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_ACCESS_DENIED"))
+                .andExpect(jsonPath("$.message").value("본인의 견적서만 조회할 수 있습니다."))
+                .andExpect(jsonPath("$.quoteNumber").doesNotExist())
+                .andExpect(jsonPath("$.customerName").doesNotExist())
+                .andExpect(jsonPath("$.items").doesNotExist())
+                .andExpect(jsonPath("$.supplyAmount").doesNotExist())
+                .andExpect(jsonPath("$.totalAmount").doesNotExist());
+    }
+
+    @Test
+    void rejectsUnauthenticatedQuoteReadsAndInvalidPage() throws Exception {
+        mockMvc.perform(get("/api/quotes"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        mockMvc.perform(get("/api/quotes/{id}", 1))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+
+        SalesMember seller = loginActiveSales();
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("페이지 번호는 0 이상이어야 합니다."));
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("페이지 크기는 1 이상 100 이하여야 합니다."));
+    }
+
+    private long createQuote(SalesMember seller, long customerId, String quoteDate, String items) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/quotes")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(customerId, quoteDate, items)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number id = JsonPath.read(result.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+        return id.longValue();
     }
 
     private SalesMember loginActiveSales() throws Exception {

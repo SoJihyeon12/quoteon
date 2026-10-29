@@ -2,6 +2,7 @@ package net.likelion.bebc25.quoteon.quote;
 
 import net.likelion.bebc25.quoteon.quote.dto.QuoteItemResponse;
 import net.likelion.bebc25.quoteon.quote.dto.QuoteResponse;
+import net.likelion.bebc25.quoteon.quote.dto.QuoteSummaryResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -10,8 +11,11 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -84,36 +88,95 @@ public class QuoteRepository {
     }
 
     public Optional<QuoteResponse> findById(long id) {
+        return findAccessById(id).map(QuoteAccess::quote);
+    }
+
+    public Optional<QuoteAccess> findAccessById(long id) {
         String sql = """
-                SELECT id, quote_number, customer_id, supply_amount, vat_amount, total_amount, status, quote_date
-                FROM quote
-                WHERE id = ?
+                SELECT q.id, q.member_id, q.quote_number, q.customer_id, c.name AS customer_name,
+                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at
+                FROM quote q
+                INNER JOIN customer c ON c.id = q.customer_id
+                WHERE q.id = ?
                 """;
-        List<QuoteHeader> headers = jdbcTemplate.query(sql, ps -> ps.setLong(1, id), (rs, rowNum) -> new QuoteHeader(
-                rs.getLong("id"),
-                rs.getString("quote_number"),
-                rs.getLong("customer_id"),
-                rs.getBigDecimal("supply_amount"),
-                rs.getBigDecimal("vat_amount"),
-                rs.getBigDecimal("total_amount"),
-                rs.getString("status"),
-                rs.getObject("quote_date", LocalDate.class)
-        ));
+        List<QuoteHeader> headers = jdbcTemplate.query(sql, ps -> ps.setLong(1, id), this::mapHeader);
         if (headers.isEmpty()) {
             return Optional.empty();
         }
         QuoteHeader header = headers.get(0);
-        return Optional.of(new QuoteResponse(
+        return Optional.of(new QuoteAccess(header.memberId(), toResponse(header, findItems(id))));
+    }
+
+    public long countByMember(long memberId) {
+        Long count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM quote WHERE member_id = ?",
+                Long.class,
+                memberId
+        );
+        return count == null ? 0 : count;
+    }
+
+    public List<QuoteSummaryResponse> findByMember(long memberId, int limit, long offset) {
+        String sql = """
+                SELECT q.id, q.member_id, q.quote_number, q.customer_id, c.name AS customer_name,
+                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at
+                FROM quote q
+                INNER JOIN customer c ON c.id = q.customer_id
+                WHERE q.member_id = ?
+                ORDER BY q.created_at DESC, q.id DESC
+                LIMIT ? OFFSET ?
+                """;
+        return jdbcTemplate.query(sql, ps -> {
+            ps.setLong(1, memberId);
+            ps.setInt(2, limit);
+            ps.setLong(3, offset);
+        }, (rs, rowNum) -> {
+            QuoteHeader header = mapHeader(rs, rowNum);
+            return new QuoteSummaryResponse(
+                    header.id(),
+                    header.quoteNumber(),
+                    header.customerId(),
+                    header.customerName(),
+                    header.quoteDate(),
+                    header.status(),
+                    header.supplyAmount(),
+                    header.vatAmount(),
+                    header.totalAmount(),
+                    header.createdAt()
+            );
+        });
+    }
+
+    private QuoteHeader mapHeader(ResultSet rs, int rowNum) throws SQLException {
+        return new QuoteHeader(
+                rs.getLong("id"),
+                rs.getLong("member_id"),
+                rs.getString("quote_number"),
+                rs.getLong("customer_id"),
+                rs.getString("customer_name"),
+                rs.getBigDecimal("supply_amount"),
+                rs.getBigDecimal("vat_amount"),
+                rs.getBigDecimal("total_amount"),
+                rs.getString("status"),
+                rs.getObject("quote_date", LocalDate.class),
+                rs.getObject("created_at", LocalDateTime.class)
+        );
+    }
+
+    private QuoteResponse toResponse(QuoteHeader header, List<QuoteItemResponse> items) {
+        return new QuoteResponse(
                 header.id(),
                 header.quoteNumber(),
                 header.customerId(),
+                header.customerName(),
                 header.supplyAmount(),
                 header.vatAmount(),
                 header.totalAmount(),
                 header.status(),
                 header.quoteDate(),
-                findItems(id)
-        ));
+                header.createdAt(),
+                items
+        );
     }
 
     private List<QuoteItemResponse> findItems(long quoteId) {
@@ -136,13 +199,16 @@ public class QuoteRepository {
 
     private record QuoteHeader(
             long id,
+            long memberId,
             String quoteNumber,
             long customerId,
+            String customerName,
             BigDecimal supplyAmount,
             BigDecimal vatAmount,
             BigDecimal totalAmount,
             String status,
-            LocalDate quoteDate
+            LocalDate quoteDate,
+            LocalDateTime createdAt
     ) {
     }
 }

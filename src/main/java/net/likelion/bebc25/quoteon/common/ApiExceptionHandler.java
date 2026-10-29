@@ -10,6 +10,9 @@ import net.likelion.bebc25.quoteon.member.MemberNotFoundException;
 import net.likelion.bebc25.quoteon.member.MemberNotPendingException;
 import net.likelion.bebc25.quoteon.product.ProductNotActiveException;
 import net.likelion.bebc25.quoteon.product.ProductNotFoundException;
+import net.likelion.bebc25.quoteon.quote.InvalidQuoteQueryException;
+import net.likelion.bebc25.quoteon.quote.QuoteAccessDeniedException;
+import net.likelion.bebc25.quoteon.quote.QuoteNotFoundException;
 import net.likelion.bebc25.quoteon.quote.DuplicateProductException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -122,6 +125,32 @@ public class ApiExceptionHandler {
                         "PRODUCT_NOT_FOUND",
                         "제품을 찾을 수 없습니다."
                 ));
+    }
+
+    @ExceptionHandler(QuoteNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteNotFound(QuoteNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "QUOTE_NOT_FOUND",
+                        "견적서를 찾을 수 없습니다."
+                ));
+    }
+
+    @ExceptionHandler(QuoteAccessDeniedException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteAccessDenied(QuoteAccessDeniedException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.FORBIDDEN.value(),
+                        "QUOTE_ACCESS_DENIED",
+                        "본인의 견적서만 조회할 수 있습니다."
+                ));
+    }
+
+    @ExceptionHandler(InvalidQuoteQueryException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidQuoteQuery(InvalidQuoteQueryException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(400, "VALIDATION_ERROR", exception.getMessage()));
     }
 
     @ExceptionHandler(ProductNotActiveException.class)

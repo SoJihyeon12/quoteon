@@ -10,7 +10,9 @@ import net.likelion.bebc25.quoteon.product.ProductNotFoundException;
 import net.likelion.bebc25.quoteon.product.ProductRepository;
 import net.likelion.bebc25.quoteon.quote.dto.CreateQuoteItemRequest;
 import net.likelion.bebc25.quoteon.quote.dto.CreateQuoteRequest;
+import net.likelion.bebc25.quoteon.quote.dto.QuotePageResponse;
 import net.likelion.bebc25.quoteon.quote.dto.QuoteResponse;
+import net.likelion.bebc25.quoteon.quote.dto.QuoteSummaryResponse;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -27,6 +29,8 @@ import java.util.Set;
 public class QuoteService {
 
     private static final int QUOTE_NUMBER_ATTEMPTS = 5;
+    private static final int DEFAULT_PAGE = 0;
+    private static final int MAX_PAGE_SIZE = 100;
     private static final BigDecimal VAT_RATE = new BigDecimal("0.10");
 
     private final CustomerRepository customerRepository;
@@ -44,6 +48,28 @@ public class QuoteService {
         this.productRepository = productRepository;
         this.quoteRepository = quoteRepository;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+    }
+
+    public QuotePageResponse list(long memberId, int page, int size) {
+        if (page < DEFAULT_PAGE) {
+            throw new InvalidQuoteQueryException("페이지 번호는 0 이상이어야 합니다.");
+        }
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new InvalidQuoteQueryException("페이지 크기는 1 이상 100 이하여야 합니다.");
+        }
+        long totalElements = quoteRepository.countByMember(memberId);
+        int totalPages = totalElements == 0 ? 0 : (int) ((totalElements + size - 1) / size);
+        List<QuoteSummaryResponse> items = quoteRepository.findByMember(memberId, size, (long) page * size);
+        return new QuotePageResponse(items, page, size, totalElements, totalPages);
+    }
+
+    public QuoteResponse get(long memberId, long quoteId) {
+        QuoteAccess access = quoteRepository.findAccessById(quoteId)
+                .orElseThrow(QuoteNotFoundException::new);
+        if (access.memberId() != memberId) {
+            throw new QuoteAccessDeniedException();
+        }
+        return access.quote();
     }
 
     public QuoteResponse create(long memberId, CreateQuoteRequest request) {
