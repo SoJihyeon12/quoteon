@@ -45,6 +45,15 @@ public class CustomerService {
         return requireOwned(memberId, customerId).customer();
     }
 
+    public CustomerResponse deactivate(long memberId, long customerId) {
+        CustomerDetail detail = requireOwned(memberId, customerId);
+        int updated = customerRepository.deactivate(customerId, memberId);
+        if (updated != 1) {
+            throw new CustomerAlreadyInactiveException();
+        }
+        return detail.customer();
+    }
+
     public CustomerResponse update(long memberId, long customerId, CreateCustomerRequest request) {
         requireOwned(memberId, customerId);
         int updated = customerRepository.update(

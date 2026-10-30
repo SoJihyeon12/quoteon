@@ -1,6 +1,7 @@
 package net.likelion.bebc25.quoteon.quote;
 
 import net.likelion.bebc25.quoteon.customer.CustomerAccessDeniedException;
+import net.likelion.bebc25.quoteon.customer.CustomerNotActiveException;
 import net.likelion.bebc25.quoteon.customer.CustomerNotFoundException;
 import net.likelion.bebc25.quoteon.customer.CustomerRef;
 import net.likelion.bebc25.quoteon.customer.CustomerRepository;
@@ -89,7 +90,7 @@ public class QuoteService {
     }
 
     private QuoteResponse writeQuote(long memberId, CreateQuoteRequest request) {
-        PricedQuote priced = priceQuote(memberId, request);
+        PricedQuote priced = priceQuote(memberId, request, true);
         long quoteId = insertQuote(
                 memberId,
                 priced.customerId(),
@@ -109,7 +110,7 @@ public class QuoteService {
         if (access.memberId() != memberId) {
             throw new QuoteAccessDeniedException();
         }
-        PricedQuote priced = priceQuote(memberId, request);
+        PricedQuote priced = priceQuote(memberId, request, false);
         int updated = quoteRepository.updateQuote(
                 quoteId,
                 memberId,
@@ -128,12 +129,15 @@ public class QuoteService {
                 .orElseThrow(() -> new IllegalStateException("quote was not stored"));
     }
 
-    private PricedQuote priceQuote(long memberId, CreateQuoteRequest request) {
+    private PricedQuote priceQuote(long memberId, CreateQuoteRequest request, boolean requireActiveCustomer) {
         rejectDuplicateProducts(request.items());
         CustomerRef customer = customerRepository.findById(request.customerId())
                 .orElseThrow(CustomerNotFoundException::new);
         if (customer.memberId() != memberId) {
             throw new CustomerAccessDeniedException();
+        }
+        if (requireActiveCustomer && !CustomerRepository.ACTIVE_STATUS.equals(customer.status())) {
+            throw new CustomerNotActiveException();
         }
 
         List<QuoteItemWrite> lines = new ArrayList<>();

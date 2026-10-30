@@ -786,6 +786,96 @@ class CustomerApiTest {
         assertEquals(1, customerCount(seller.id()));
     }
 
+    @Test
+    void deactivatesOwnCustomerAndHidesTheCustomerFromTheList() throws Exception {
+        SalesMember seller = loginActiveSales();
+        MvcResult created = mockMvc.perform(post("/api/customers")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"비활성대상","customerType":"개인","phone":"01011112222","email":"off@example.com","address":"서울시","memo":"유지"}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number id = JsonPath.read(created.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+
+        mockMvc.perform(post("/api/customers/{id}/deactivate", id.longValue())
+                        .with(csrf())
+                        .session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(jsonId(id.longValue())))
+                .andExpect(jsonPath("$.name").value("비활성대상"))
+                .andExpect(jsonPath("$.customerType").value("개인"))
+                .andExpect(jsonPath("$.phone").value("01011112222"))
+                .andExpect(jsonPath("$.email").value("off@example.com"))
+                .andExpect(jsonPath("$.address").value("서울시"))
+                .andExpect(jsonPath("$.memo").value("유지"))
+                .andExpect(jsonPath("$.status").doesNotExist())
+                .andExpect(jsonPath("$.memberId").doesNotExist());
+
+        StoredCustomer stored = storedCustomer(id.longValue());
+        assertEquals(seller.id(), stored.memberId());
+        assertEquals("INACTIVE", stored.status());
+        assertEquals(1, customerCount(seller.id()));
+
+        mockMvc.perform(get("/api/customers").session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void rejectsDeactivateForAnotherMemberMissingAndAlreadyInactiveCustomers() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        long activeId = insertCustomer(seller.id(), "유지고객", "01011112222", "기업", "ACTIVE");
+        long inactiveId = insertCustomer(seller.id(), "이미비활성", "01033334444", "개인", "INACTIVE");
+
+        mockMvc.perform(post("/api/customers/{id}/deactivate", activeId)
+                        .with(csrf())
+                        .session(other.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CUSTOMER_ACCESS_DENIED"))
+                .andExpect(jsonPath("$.name").doesNotExist())
+                .andExpect(jsonPath("$.customerType").doesNotExist())
+                .andExpect(jsonPath("$.phone").doesNotExist())
+                .andExpect(jsonPath("$.email").doesNotExist());
+        assertEquals("ACTIVE", storedCustomer(activeId).status());
+
+        mockMvc.perform(post("/api/customers/{id}/deactivate", 999999999L)
+                        .with(csrf())
+                        .session(seller.session()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CUSTOMER_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("고객을 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.name").doesNotExist());
+
+        mockMvc.perform(post("/api/customers/{id}/deactivate", inactiveId)
+                        .with(csrf())
+                        .session(seller.session()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CUSTOMER_ALREADY_INACTIVE"))
+                .andExpect(jsonPath("$.message").value("활성 고객만 비활성화할 수 있습니다."))
+                .andExpect(jsonPath("$.name").doesNotExist());
+        assertEquals("INACTIVE", storedCustomer(inactiveId).status());
+        assertEquals(2, customerCount(seller.id()));
+    }
+
+    @Test
+    void rejectsUnauthenticatedAndMissingCsrfWhenDeactivatingCustomer() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long id = insertCustomer(seller.id(), "인증고객", "01011112222", "개인", "ACTIVE");
+
+        mockMvc.perform(post("/api/customers/{id}/deactivate", id).with(csrf()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        mockMvc.perform(post("/api/customers/{id}/deactivate", id).session(seller.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CSRF"));
+        assertEquals("ACTIVE", storedCustomer(id).status());
+    }
+
     private SalesMember loginActiveSales() throws Exception {
         String email = "customer-" + UUID.randomUUID() + "@quoteon.test";
         MvcResult signup = mockMvc.perform(post("/api/signup")

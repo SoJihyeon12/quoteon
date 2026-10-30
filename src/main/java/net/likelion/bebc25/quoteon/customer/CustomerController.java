@@ -34,6 +34,11 @@ public class CustomerController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @PostMapping("/{id}/deactivate")
+    public CustomerResponse deactivate(@PathVariable long id) {
+        return customerService.deactivate(currentMemberId(), id);
+    }
+
     @PutMapping("/{id}")
     public CustomerResponse update(
             @PathVariable long id,

@@ -16,7 +16,8 @@ import java.util.Optional;
 @Repository
 public class CustomerRepository {
 
-    static final String ACTIVE_STATUS = "ACTIVE";
+    public static final String ACTIVE_STATUS = "ACTIVE";
+    public static final String INACTIVE_STATUS = "INACTIVE";
 
     private static final String SELECTABLE_FILTER = """
             member_id = ?
@@ -118,15 +119,25 @@ public class CustomerRepository {
         )).stream().findFirst();
     }
 
+    public int deactivate(long id, long memberId) {
+        String sql = """
+                UPDATE customer
+                SET status = ?
+                WHERE id = ? AND member_id = ? AND status = ?
+                """;
+        return jdbcTemplate.update(sql, INACTIVE_STATUS, id, memberId, ACTIVE_STATUS);
+    }
+
     public Optional<CustomerRef> findById(long id) {
         String sql = """
-                SELECT id, member_id
+                SELECT id, member_id, status
                 FROM customer
                 WHERE id = ?
                 """;
         return jdbcTemplate.query(sql, ps -> ps.setLong(1, id), (rs, rowNum) -> new CustomerRef(
                 rs.getLong("id"),
-                rs.getLong("member_id")
+                rs.getLong("member_id"),
+                rs.getString("status")
         )).stream().findFirst();
     }
 

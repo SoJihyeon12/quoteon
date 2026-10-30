@@ -195,6 +195,51 @@ class QuoteApiTest {
     }
 
     @Test
+    void rejectsInactiveCustomerOnCreateAndAcceptsActiveCustomer() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        long inactiveId = insertCustomer(seller.id(), "비활성고객");
+        jdbcTemplate.update("UPDATE customer SET status = 'INACTIVE' WHERE id = ?", inactiveId);
+        long foreignInactiveId = insertCustomer(other.id(), "타인비활성");
+        jdbcTemplate.update("UPDATE customer SET status = 'INACTIVE' WHERE id = ?", foreignInactiveId);
+        long activeId = insertCustomer(seller.id(), "활성고객");
+        long productId = productId("SH-600");
+
+        mockMvc.perform(post("/api/quotes")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(inactiveId, "2026-10-29", itemJson(productId, 1))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CUSTOMER_NOT_ACTIVE"))
+                .andExpect(jsonPath("$.message").value("비활성 고객은 신규 견적에 선택할 수 없습니다."))
+                .andExpect(jsonPath("$.name").doesNotExist());
+        assertEquals(0, quoteCount(inactiveId));
+
+        mockMvc.perform(post("/api/quotes")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(foreignInactiveId, "2026-10-29", itemJson(productId, 1))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CUSTOMER_ACCESS_DENIED"))
+                .andExpect(jsonPath("$.name").doesNotExist());
+        assertEquals(0, quoteCount(foreignInactiveId));
+
+        mockMvc.perform(post("/api/quotes")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(activeId, "2026-10-29", itemJson(productId, 2))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.customerId").value(jsonId(activeId)))
+                .andExpect(jsonPath("$.supplyAmount").value(240000.00))
+                .andExpect(jsonPath("$.vatAmount").value(24000))
+                .andExpect(jsonPath("$.totalAmount").value(264000.00));
+        assertEquals(1, quoteCount(activeId));
+    }
+
+    @Test
     void rejectsInvalidQuantityEmptyItemsAndDuplicates() throws Exception {
         SalesMember seller = loginActiveSales();
         long customerId = insertCustomer(seller.id(), "검증고객");

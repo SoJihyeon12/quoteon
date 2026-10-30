@@ -4,6 +4,8 @@ import net.likelion.bebc25.quoteon.admin.InvalidMemberQueryException;
 import net.likelion.bebc25.quoteon.auth.InvalidCredentialsException;
 import net.likelion.bebc25.quoteon.auth.MemberAccessDeniedException;
 import net.likelion.bebc25.quoteon.customer.CustomerAccessDeniedException;
+import net.likelion.bebc25.quoteon.customer.CustomerAlreadyInactiveException;
+import net.likelion.bebc25.quoteon.customer.CustomerNotActiveException;
 import net.likelion.bebc25.quoteon.customer.CustomerNotFoundException;
 import net.likelion.bebc25.quoteon.customer.InvalidCustomerQueryException;
 import net.likelion.bebc25.quoteon.member.EmailAlreadyExistsException;
@@ -102,6 +104,26 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleInvalidCustomerQuery(InvalidCustomerQueryException exception) {
         return ResponseEntity.badRequest()
                 .body(ApiErrorResponse.of(400, "VALIDATION_ERROR", exception.getMessage()));
+    }
+
+    @ExceptionHandler(CustomerNotActiveException.class)
+    public ResponseEntity<ApiErrorResponse> handleCustomerNotActive(CustomerNotActiveException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "CUSTOMER_NOT_ACTIVE",
+                        "비활성 고객은 신규 견적에 선택할 수 없습니다."
+                ));
+    }
+
+    @ExceptionHandler(CustomerAlreadyInactiveException.class)
+    public ResponseEntity<ApiErrorResponse> handleCustomerAlreadyInactive(CustomerAlreadyInactiveException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "CUSTOMER_ALREADY_INACTIVE",
+                        "활성 고객만 비활성화할 수 있습니다."
+                ));
     }
 
     @ExceptionHandler(CustomerNotFoundException.class)
