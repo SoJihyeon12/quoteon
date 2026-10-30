@@ -38,6 +38,9 @@ out/
 .env.*
 !.env.example
 
+# 업로드된 제품 이미지
+/images/products/
+
 # 로그 파일
 *.log
 

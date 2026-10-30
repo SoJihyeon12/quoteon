@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.csrf.CsrfException;
 
@@ -19,6 +21,8 @@ final class JsonAccessDeniedHandler implements AccessDeniedHandler {
             HttpServletResponse response,
             AccessDeniedException accessDeniedException
     ) throws IOException {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        AuthTrace.denied(request, authentication, accessDeniedException.getClass().getName());
         if (accessDeniedException instanceof CsrfException) {
             writer.write(response, HttpStatus.FORBIDDEN.value(), "CSRF", "CSRF 토큰이 유효하지 않습니다.");
             return;

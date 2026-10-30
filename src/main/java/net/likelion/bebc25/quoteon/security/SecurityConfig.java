@@ -83,12 +83,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/signup", "/api/login").permitAll()
                         .requestMatchers("/api/admin/**").hasAuthority(MemberRole.ADMIN)
                         .requestMatchers("/api/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/images/products/**").permitAll()
                         .anyRequest().denyAll())
                 .anonymous(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
+                .addFilterBefore(new AuthorizationTraceFilter(), AuthorizationFilter.class)
                 .addFilterAfter(new MemberStatusFilter(memberRepository), AuthorizationFilter.class);
         return http.build();
     }

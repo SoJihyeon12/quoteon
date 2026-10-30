@@ -28,6 +28,16 @@ public class MemberRepository {
             rs.getObject("created_at", LocalDateTime.class)
     );
 
+    private static final RowMapper<MemberSummary> MEMBER_SUMMARY_MAPPER = (rs, rowNum) -> new MemberSummary(
+            rs.getLong("id"),
+            rs.getString("name"),
+            rs.getString("email"),
+            rs.getString("phone"),
+            rs.getString("company_name"),
+            rs.getString("role"),
+            rs.getString("status")
+    );
+
     private static final RowMapper<Member> ROW_MAPPER = (rs, rowNum) -> new Member(
             rs.getLong("id"),
             rs.getString("email"),
@@ -61,6 +71,15 @@ public class MemberRepository {
                 WHERE id = ?
                 """;
         return jdbcTemplate.query(sql, ps -> ps.setLong(1, id), ROW_MAPPER).stream().findFirst();
+    }
+
+    public Optional<MemberSummary> findSummaryById(long id) {
+        String sql = """
+                SELECT id, name, email, phone, company_name, role, status
+                FROM member
+                WHERE id = ?
+                """;
+        return jdbcTemplate.query(sql, ps -> ps.setLong(1, id), MEMBER_SUMMARY_MAPPER).stream().findFirst();
     }
 
     public long insertPending(
@@ -139,6 +158,75 @@ public class MemberRepository {
         return counts.isEmpty() ? 0L : counts.get(0);
     }
 
+    public List<MemberSummary> findMembers(String keyword, int limit, long offset) {
+        String sql = """
+                SELECT id, name, email, phone, company_name, role, status
+                FROM member
+                WHERE (
+                        ? = 0
+                        OR name LIKE ? ESCAPE '\\\\'
+                        OR email LIKE ? ESCAPE '\\\\'
+                        OR company_name LIKE ? ESCAPE '\\\\'
+                      )
+                ORDER BY created_at DESC, id DESC
+                LIMIT ? OFFSET ?
+                """;
+        return jdbcTemplate.query(sql, ps -> {
+            int next = bindMemberMatch(ps, keyword);
+            ps.setInt(next, limit);
+            ps.setLong(next + 1, offset);
+        }, MEMBER_SUMMARY_MAPPER);
+    }
+
+    public long countMembers(String keyword) {
+        String sql = """
+                SELECT COUNT(*)
+                FROM member
+                WHERE (
+                        ? = 0
+                        OR name LIKE ? ESCAPE '\\\\'
+                        OR email LIKE ? ESCAPE '\\\\'
+                        OR company_name LIKE ? ESCAPE '\\\\'
+                      )
+                """;
+        List<Long> counts = jdbcTemplate.query(
+                sql,
+                ps -> bindMemberMatch(ps, keyword),
+                (rs, rowNum) -> rs.getLong(1)
+        );
+        return counts.isEmpty() ? 0L : counts.get(0);
+    }
+
+    public int updateProfile(long id, String name, String email, String phone, String companyName, String role) {
+        String sql = """
+                UPDATE member
+                SET name = ?, email = ?, phone = ?, company_name = ?, role = ?
+                WHERE id = ?
+                """;
+        try {
+            return jdbcTemplate.update(sql, ps -> {
+                ps.setString(1, name);
+                ps.setString(2, email);
+                setNullableString(ps, 3, phone);
+                setNullableString(ps, 4, companyName);
+                ps.setString(5, role);
+                ps.setLong(6, id);
+            });
+        } catch (DuplicateKeyException exception) {
+            throw new EmailAlreadyExistsException();
+        }
+    }
+
+    public int updateStatusIfCurrent(long id, String newStatus, String expectedStatus) {
+        String sql = """
+                UPDATE member
+                SET status = ?
+                WHERE id = ?
+                  AND status = ?
+                """;
+        return jdbcTemplate.update(sql, newStatus, id, expectedStatus);
+    }
+
     public int updateStatusIfPending(long id, String status) {
         String sql = """
                 UPDATE member
@@ -158,6 +246,16 @@ public class MemberRepository {
         statement.setString(4, pattern);
         statement.setString(5, pattern);
         return 6;
+    }
+
+    private static int bindMemberMatch(PreparedStatement statement, String keyword) throws SQLException {
+        boolean hasKeyword = keyword != null;
+        String pattern = hasKeyword ? toContainsPattern(keyword) : "%";
+        statement.setInt(1, hasKeyword ? 1 : 0);
+        statement.setString(2, pattern);
+        statement.setString(3, pattern);
+        statement.setString(4, pattern);
+        return 5;
     }
 
     private static String toContainsPattern(String keyword) {

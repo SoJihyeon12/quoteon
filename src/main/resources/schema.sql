@@ -52,6 +52,24 @@ CREATE TABLE IF NOT EXISTS product (
                                                REFERENCES category(id)
 );
 
+CREATE TABLE IF NOT EXISTS product_image (
+                                             id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                             product_id BIGINT NOT NULL,
+                                             image_path VARCHAR(500) NOT NULL,
+                                             sort_order INT NOT NULL,
+                                             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+                                             CONSTRAINT uq_product_image_slot
+                                                 UNIQUE (product_id, sort_order),
+
+                                             CONSTRAINT ck_product_image_sort_order
+                                                 CHECK (sort_order IN (1, 2, 3)),
+
+                                             CONSTRAINT fk_product_image_product
+                                                 FOREIGN KEY (product_id)
+                                                     REFERENCES product(id)
+);
+
 -- 4. 고객
 CREATE TABLE IF NOT EXISTS customer (
                                         id BIGINT AUTO_INCREMENT PRIMARY KEY,

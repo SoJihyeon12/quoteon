@@ -1,6 +1,11 @@
 package net.likelion.bebc25.quoteon.common;
 
 import net.likelion.bebc25.quoteon.admin.InvalidMemberQueryException;
+import net.likelion.bebc25.quoteon.category.CategoryHasChildrenException;
+import net.likelion.bebc25.quoteon.category.CategoryHasProductsException;
+import net.likelion.bebc25.quoteon.category.CategoryNameExistsException;
+import net.likelion.bebc25.quoteon.category.CategoryNotFoundException;
+import net.likelion.bebc25.quoteon.category.CategoryParentInvalidException;
 import net.likelion.bebc25.quoteon.auth.InvalidCredentialsException;
 import net.likelion.bebc25.quoteon.auth.MemberAccessDeniedException;
 import net.likelion.bebc25.quoteon.customer.CustomerAccessDeniedException;
@@ -11,6 +16,16 @@ import net.likelion.bebc25.quoteon.customer.InvalidCustomerQueryException;
 import net.likelion.bebc25.quoteon.member.EmailAlreadyExistsException;
 import net.likelion.bebc25.quoteon.member.MemberNotFoundException;
 import net.likelion.bebc25.quoteon.member.MemberNotPendingException;
+import net.likelion.bebc25.quoteon.member.MemberStatusConflictException;
+import net.likelion.bebc25.quoteon.product.InvalidImageSlotException;
+import net.likelion.bebc25.quoteon.product.InvalidProductImageException;
+import net.likelion.bebc25.quoteon.product.InvalidProductImagePathException;
+import net.likelion.bebc25.quoteon.product.InvalidProductQueryException;
+import net.likelion.bebc25.quoteon.product.ProductCodeExistsException;
+import net.likelion.bebc25.quoteon.product.ProductImageNotFoundException;
+import net.likelion.bebc25.quoteon.product.ProductInUseException;
+import net.likelion.bebc25.quoteon.product.ProductStatusConflictException;
+import net.likelion.bebc25.quoteon.product.ProductImageValidator;
 import net.likelion.bebc25.quoteon.product.ProductNotActiveException;
 import net.likelion.bebc25.quoteon.product.ProductNotFoundException;
 import net.likelion.bebc25.quoteon.quote.InvalidQuoteQueryException;
@@ -27,6 +42,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -69,6 +86,56 @@ public class ApiExceptionHandler {
                 .body(ApiErrorResponse.of(409, "EMAIL_ALREADY_EXISTS", "이미 가입된 이메일입니다."));
     }
 
+    @ExceptionHandler(CategoryNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleCategoryNotFound(CategoryNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "CATEGORY_NOT_FOUND",
+                        exception.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(CategoryNameExistsException.class)
+    public ResponseEntity<ApiErrorResponse> handleCategoryNameExists(CategoryNameExistsException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "CATEGORY_NAME_EXISTS",
+                        "이미 사용 중인 카테고리명입니다."
+                ));
+    }
+
+    @ExceptionHandler(CategoryParentInvalidException.class)
+    public ResponseEntity<ApiErrorResponse> handleCategoryParentInvalid(CategoryParentInvalidException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "CATEGORY_INVALID_PARENT",
+                        exception.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(CategoryHasChildrenException.class)
+    public ResponseEntity<ApiErrorResponse> handleCategoryHasChildren(CategoryHasChildrenException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "CATEGORY_HAS_CHILDREN",
+                        "하위 카테고리가 있어 삭제할 수 없습니다."
+                ));
+    }
+
+    @ExceptionHandler(CategoryHasProductsException.class)
+    public ResponseEntity<ApiErrorResponse> handleCategoryHasProducts(CategoryHasProductsException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "CATEGORY_HAS_PRODUCTS",
+                        "연결된 제품이 있어 삭제할 수 없습니다."
+                ));
+    }
+
     @ExceptionHandler(MemberNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleMemberNotFound(MemberNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -76,6 +143,16 @@ public class ApiExceptionHandler {
                         HttpStatus.NOT_FOUND.value(),
                         "MEMBER_NOT_FOUND",
                         "회원을 찾을 수 없습니다."
+                ));
+    }
+
+    @ExceptionHandler(MemberStatusConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleMemberStatusConflict(MemberStatusConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "MEMBER_STATUS_CONFLICT",
+                        exception.getMessage()
                 ));
     }
 
@@ -87,6 +164,22 @@ public class ApiExceptionHandler {
                         "MEMBER_NOT_PENDING",
                         "승인 대기 상태의 회원만 처리할 수 있습니다."
                 ));
+    }
+
+    @ExceptionHandler(ProductCodeExistsException.class)
+    public ResponseEntity<ApiErrorResponse> handleProductCodeExists(ProductCodeExistsException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "PRODUCT_CODE_EXISTS",
+                        "이미 사용 중인 제품 코드입니다."
+                ));
+    }
+
+    @ExceptionHandler(InvalidProductQueryException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidProductQuery(InvalidProductQueryException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(400, "VALIDATION_ERROR", exception.getMessage()));
     }
 
     @ExceptionHandler(InvalidMemberQueryException.class)
@@ -144,6 +237,66 @@ public class ApiExceptionHandler {
                         HttpStatus.FORBIDDEN.value(),
                         "CUSTOMER_ACCESS_DENIED",
                         "본인의 고객만 견적에 사용할 수 있습니다."
+                ));
+    }
+
+    @ExceptionHandler(InvalidProductImageException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidProductImage(InvalidProductImageException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(400, "INVALID_IMAGE", exception.getMessage()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(400, "INVALID_IMAGE", ProductImageValidator.SIZE_MESSAGE));
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingUpload(MissingServletRequestPartException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(400, "INVALID_IMAGE", ProductImageValidator.EMPTY_MESSAGE));
+    }
+
+    @ExceptionHandler(InvalidImageSlotException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidImageSlot(InvalidImageSlotException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(400, "VALIDATION_ERROR", exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidProductImagePathException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidProductImagePath(InvalidProductImagePathException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(400, "INVALID_IMAGE_PATH", "이미지 경로를 확인해 주세요."));
+    }
+
+    @ExceptionHandler(ProductImageNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleProductImageNotFound(ProductImageNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "IMAGE_NOT_FOUND",
+                        "이미지 파일을 찾을 수 없습니다."
+                ));
+    }
+
+    @ExceptionHandler(ProductStatusConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleProductStatusConflict(ProductStatusConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "PRODUCT_STATUS_CONFLICT",
+                        exception.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(ProductInUseException.class)
+    public ResponseEntity<ApiErrorResponse> handleProductInUse(ProductInUseException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "PRODUCT_IN_USE",
+                        "해당 제품은 견적 내역에서 사용 중이므로 삭제할 수 없습니다. 판매 중지를 이용해 주세요."
                 ));
     }
 

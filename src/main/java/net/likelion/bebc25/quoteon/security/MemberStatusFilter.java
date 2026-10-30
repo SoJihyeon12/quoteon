@@ -40,6 +40,9 @@ public class MemberStatusFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (request.getRequestURI().startsWith("/api/")) {
+            AuthTrace.statusBefore(request, authentication);
+        }
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || authentication instanceof AnonymousAuthenticationToken) {
@@ -80,6 +83,9 @@ public class MemberStatusFilter extends OncePerRequestFilter {
                 refreshed.getAuthorities()
         );
         SecurityContextHolder.getContext().setAuthentication(refreshedAuthentication);
+        if (request.getRequestURI().startsWith("/api/")) {
+            AuthTrace.statusAfter(request, refreshedAuthentication);
+        }
         filterChain.doFilter(request, response);
     }
 
