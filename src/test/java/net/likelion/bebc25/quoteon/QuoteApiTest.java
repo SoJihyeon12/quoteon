@@ -487,7 +487,6 @@ class QuoteApiTest {
         long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(productId, 1));
         String quoteNumber = quoteNumber(quoteId);
         long previousItemId = itemId(quoteId);
-        jdbcTemplate.update("UPDATE quote SET status = 'SENT' WHERE id = ?", quoteId);
         jdbcTemplate.update(
                 "UPDATE product SET name = ?, sale_price = ? WHERE id = ?",
                 "수정후제품",
@@ -508,7 +507,7 @@ class QuoteApiTest {
                 .andExpect(jsonPath("$.customerId").value(jsonId(nextCustomerId)))
                 .andExpect(jsonPath("$.customerName").value("수정고객"))
                 .andExpect(jsonPath("$.quoteDate").value("2026-11-02"))
-                .andExpect(jsonPath("$.status").value("SENT"))
+                .andExpect(jsonPath("$.status").value("DRAFT"))
                 .andExpect(jsonPath("$.supplyAmount").value(15.00))
                 .andExpect(jsonPath("$.vatAmount").value(2))
                 .andExpect(jsonPath("$.totalAmount").value(17.00))
@@ -523,7 +522,7 @@ class QuoteApiTest {
         StoredQuote stored = storedQuote(quoteId);
         assertEquals(seller.id(), stored.memberId());
         assertEquals(nextCustomerId, stored.customerId());
-        assertEquals("SENT", stored.status());
+        assertEquals("DRAFT", stored.status());
         assertEquals(quoteNumber, quoteNumber(quoteId));
         assertEquals("2026-11-02", quoteDate(quoteId));
         assertEquals(0, new BigDecimal("15.00").compareTo(stored.supplyAmount()));
@@ -532,6 +531,43 @@ class QuoteApiTest {
         assertEquals(1, itemCount(quoteId));
         assertNotEquals(previousItemId, itemId(quoteId));
         assertEquals(0, quoteCount(customerId));
+    }
+
+    @Test
+    void rejectsUpdateOfSentQuoteWithoutChangingAmountsOrItems() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "발송고객");
+        long nextCustomerId = insertCustomer(seller.id(), "다른고객");
+        long quoteId = createQuote(seller, customerId, "2026-10-29", itemJson(productId("SH-600"), 1));
+        String quoteNumber = quoteNumber(quoteId);
+        long itemId = itemId(quoteId);
+        jdbcTemplate.update("UPDATE quote SET status = 'SENT' WHERE id = ?", quoteId);
+
+        mockMvc.perform(put("/api/quotes/{id}", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(nextCustomerId, "2026-11-02", itemJson(productId("OF-100"), 3))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUOTE_NOT_EDITABLE"))
+                .andExpect(jsonPath("$.message").value("발송 완료된 견적은 수정할 수 없습니다."))
+                .andExpect(jsonPath("$.quoteNumber").doesNotExist())
+                .andExpect(jsonPath("$.items").doesNotExist())
+                .andExpect(jsonPath("$.totalAmount").doesNotExist());
+
+        StoredQuote stored = storedQuote(quoteId);
+        assertEquals(seller.id(), stored.memberId());
+        assertEquals(customerId, stored.customerId());
+        assertEquals("SENT", stored.status());
+        assertEquals(quoteNumber, quoteNumber(quoteId));
+        assertEquals("2026-10-29", quoteDate(quoteId));
+        assertEquals(0, new BigDecimal("120000.00").compareTo(stored.supplyAmount()));
+        assertEquals(0, new BigDecimal("12000").compareTo(stored.vatAmount()));
+        assertEquals(0, new BigDecimal("132000.00").compareTo(stored.totalAmount()));
+        assertEquals(1, itemCount(quoteId));
+        assertEquals(itemId, itemId(quoteId));
+        assertEquals(productId("SH-600"), storedItemProductId(quoteId));
+        assertEquals(0, quoteCount(nextCustomerId));
     }
 
     @Test

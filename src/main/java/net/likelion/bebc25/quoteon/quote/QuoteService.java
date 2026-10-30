@@ -110,6 +110,9 @@ public class QuoteService {
         if (access.memberId() != memberId) {
             throw new QuoteAccessDeniedException();
         }
+        if (!QuoteRepository.DRAFT.equals(access.quote().status())) {
+            throw new QuoteNotEditableException();
+        }
         PricedQuote priced = priceQuote(memberId, request, false);
         int updated = quoteRepository.updateQuote(
                 quoteId,

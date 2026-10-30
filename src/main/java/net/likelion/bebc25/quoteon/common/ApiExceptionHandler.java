@@ -15,6 +15,7 @@ import net.likelion.bebc25.quoteon.product.ProductNotActiveException;
 import net.likelion.bebc25.quoteon.product.ProductNotFoundException;
 import net.likelion.bebc25.quoteon.quote.InvalidQuoteQueryException;
 import net.likelion.bebc25.quoteon.quote.QuoteAccessDeniedException;
+import net.likelion.bebc25.quoteon.quote.QuoteNotEditableException;
 import net.likelion.bebc25.quoteon.quote.QuoteNotFoundException;
 import net.likelion.bebc25.quoteon.quote.DuplicateProductException;
 import org.slf4j.Logger;
@@ -163,6 +164,16 @@ public class ApiExceptionHandler {
                         HttpStatus.NOT_FOUND.value(),
                         "QUOTE_NOT_FOUND",
                         "견적서를 찾을 수 없습니다."
+                ));
+    }
+
+    @ExceptionHandler(QuoteNotEditableException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteNotEditable(QuoteNotEditableException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "QUOTE_NOT_EDITABLE",
+                        "발송 완료된 견적은 수정할 수 없습니다."
                 ));
     }
 
