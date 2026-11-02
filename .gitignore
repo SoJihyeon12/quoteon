@@ -38,8 +38,9 @@ out/
 .env.*
 !.env.example
 
-# 업로드된 제품 이미지
-/images/products/
+# 업로드된 제품 이미지. 시연 카탈로그 A1-*.jpg 만 저장소에 포함한다.
+/images/products/*
+!/images/products/A1-*.jpg
 
 # 로그 파일
 *.log
