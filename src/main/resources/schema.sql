@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS quote (
                                      vat_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
                                      total_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
                                      status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+                                     memo TEXT,
                                      quote_date DATE NOT NULL,
                                      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -121,6 +122,8 @@ CREATE TABLE IF NOT EXISTS quote_item (
                                           product_id BIGINT,
                                           product_name VARCHAR(255) NOT NULL,
                                           product_code VARCHAR(100) NOT NULL,
+                                          specification VARCHAR(500),
+                                          specification_source VARCHAR(20),
                                           sale_price DECIMAL(12, 2) NOT NULL,
                                           quantity INT NOT NULL,
                                           amount DECIMAL(14, 2) NOT NULL,
@@ -150,4 +153,25 @@ CREATE TABLE IF NOT EXISTS quote_email_history (
                                                        FOREIGN KEY (quote_id)
                                                            REFERENCES quote(id)
                                                            ON DELETE CASCADE
+);
+
+-- 8. 제품 즐겨찾기 (회원별)
+CREATE TABLE IF NOT EXISTS product_favorite (
+                                                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                                member_id BIGINT NOT NULL,
+                                                product_id BIGINT NOT NULL,
+                                                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+                                                CONSTRAINT uq_product_favorite_member_product
+                                                    UNIQUE (member_id, product_id),
+
+                                                CONSTRAINT fk_product_favorite_member
+                                                    FOREIGN KEY (member_id)
+                                                        REFERENCES member(id)
+                                                        ON DELETE CASCADE,
+
+                                                CONSTRAINT fk_product_favorite_product
+                                                    FOREIGN KEY (product_id)
+                                                        REFERENCES product(id)
+                                                        ON DELETE CASCADE
 );

@@ -239,8 +239,11 @@ FROM demo_quote d
 JOIN member m ON m.email = d.member_email
 JOIN customer c ON c.name = d.customer_name AND c.member_id = m.id;
 
-INSERT INTO quote_item (quote_id, product_id, product_name, product_code, sale_price, quantity, amount)
-SELECT q.id, p.id, p.name, p.product_code, p.sale_price, l.quantity, ROUND(p.sale_price * l.quantity, 2)
+INSERT INTO quote_item (
+    quote_id, product_id, product_name, product_code, specification, specification_source, sale_price, quantity, amount
+)
+SELECT q.id, p.id, p.name, p.product_code, p.specification, 'SNAPSHOT', p.sale_price, l.quantity,
+       ROUND(p.sale_price * l.quantity, 2)
 FROM demo_line l
 JOIN quote q ON q.quote_number = l.quote_number
 JOIN product p ON p.product_code = l.product_code;
@@ -297,7 +300,7 @@ SET @valid = (
     AND (SELECT COUNT(*) FROM quote q LEFT JOIN member m ON m.id = q.member_id WHERE m.id IS NULL) = 0
     AND (SELECT COUNT(*) FROM quote q JOIN customer c ON c.id = q.customer_id WHERE q.member_id <> c.member_id) = 0
     AND (SELECT COUNT(*) FROM quote_item i LEFT JOIN quote q ON q.id = i.quote_id WHERE q.id IS NULL) = 0
-    AND (SELECT COUNT(*) FROM quote_item i LEFT JOIN product p ON p.id = i.product_id WHERE p.id IS NULL OR i.product_name <> p.name OR i.product_code <> p.product_code OR i.sale_price <> p.sale_price) = 0
+    AND (SELECT COUNT(*) FROM quote_item i LEFT JOIN product p ON p.id = i.product_id WHERE p.id IS NULL OR i.product_name <> p.name OR i.product_code <> p.product_code OR i.sale_price <> p.sale_price OR i.specification_source <> 'SNAPSHOT' OR NOT (i.specification <=> p.specification)) = 0
     AND (SELECT COUNT(*) FROM quote_email_history h LEFT JOIN quote q ON q.id = h.quote_id WHERE q.id IS NULL) = 0
     AND (SELECT COUNT(*) FROM quote_email_history WHERE status = 'SUCCESS') = 9
     AND (SELECT COUNT(*) FROM quote_email_history WHERE status = 'FAILED') = 1
