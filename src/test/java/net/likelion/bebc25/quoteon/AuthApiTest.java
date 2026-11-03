@@ -151,7 +151,7 @@ class AuthApiTest {
                 .andExpect(jsonPath("$[0].name").value("전자제품"));
         mockMvc.perform(get("/api/products").session(session).param("keyword", "SH-600"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].productCode").value("SH-600"));
+                .andExpect(jsonPath("$.items[0].productCode").value("SH-600"));
     }
 
     @Test

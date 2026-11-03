@@ -158,12 +158,12 @@ class AdminProductApiTest {
         MockHttpSession sales = ActiveSession.open(mockMvc, jdbcTemplate);
         mockMvc.perform(get("/api/products").session(sales))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)))
-                .andExpect(jsonPath("$[0].productCode").value("SH-600"))
-                .andExpect(jsonPath("$[0].categoryId").value(1))
-                .andExpect(jsonPath("$[0].categoryName").value("전자제품"))
-                .andExpect(jsonPath("$[0].status").value("ACTIVE"))
-                .andExpect(jsonPath("$[2].productCode").value("OF-100"));
+                .andExpect(jsonPath("$.items", hasSize(3)))
+                .andExpect(jsonPath("$.items[0].productCode").value("SH-600"))
+                .andExpect(jsonPath("$.items[0].categoryId").value(1))
+                .andExpect(jsonPath("$.items[0].categoryName").value("전자제품"))
+                .andExpect(jsonPath("$.items[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$.items[2].productCode").value("OF-100"));
     }
 
     @Test

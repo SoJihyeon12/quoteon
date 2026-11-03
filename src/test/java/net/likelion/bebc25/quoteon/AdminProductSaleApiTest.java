@@ -109,8 +109,8 @@ class AdminProductSaleApiTest {
 
         mockMvc.perform(get("/api/products").session(seller.session()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)))
-                .andExpect(jsonPath("$[0].productCode").value("SH-600"));
+                .andExpect(jsonPath("$.items", hasSize(3)))
+                .andExpect(jsonPath("$.items[0].productCode").value("SH-600"));
         mockMvc.perform(get("/api/admin/products/{productId}", productId).session(admin))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("INACTIVE"));
@@ -186,6 +186,57 @@ class AdminProductSaleApiTest {
     }
 
     @Test
+    void resumeSaleReturnsStoppedProductToTheSalesCatalog() throws Exception {
+        MockHttpSession admin = loginAdmin();
+        MockHttpSession sales = ActiveSession.open(mockMvc, jdbcTemplate);
+        long productId = createProduct(admin, "재개제품");
+        String code = jdbcTemplate.queryForObject(
+                "SELECT product_code FROM product WHERE id = ?",
+                String.class,
+                productId
+        );
+
+        mockMvc.perform(post("/api/admin/products/{productId}/stop", productId)
+                        .with(csrf())
+                        .session(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INACTIVE"));
+        mockMvc.perform(get("/api/products").session(sales).param("keyword", code))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mockMvc.perform(post("/api/admin/products/{productId}/resume", productId).with(csrf()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/admin/products/{productId}/resume", productId)
+                        .with(csrf())
+                        .session(sales))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        mockMvc.perform(post("/api/admin/products/{productId}/resume", productId).session(admin))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CSRF"));
+        assertEquals("INACTIVE", statusOf(productId));
+
+        mockMvc.perform(post("/api/admin/products/{productId}/resume", productId)
+                        .with(csrf())
+                        .session(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(productId))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+        assertEquals("ACTIVE", statusOf(productId));
+        mockMvc.perform(get("/api/products").session(sales).param("keyword", code))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].status").value("ACTIVE"));
+        mockMvc.perform(post("/api/admin/products/{productId}/resume", productId)
+                        .with(csrf())
+                        .session(admin))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PRODUCT_STATUS_CONFLICT"))
+                .andExpect(jsonPath("$.message").value("판매 중지된 제품만 판매를 재개할 수 있습니다."));
+    }
+
+    @Test
     void stopAndDeleteRequireAdminAndCsrf() throws Exception {
         MockHttpSession admin = loginAdmin();
         MockHttpSession sales = ActiveSession.open(mockMvc, jdbcTemplate);
@@ -217,8 +268,8 @@ class AdminProductSaleApiTest {
 
         mockMvc.perform(get("/api/products").session(sales))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].productCode").value("SH-600"))
-                .andExpect(jsonPath("$[0].status").value("ACTIVE"));
+                .andExpect(jsonPath("$.items[0].productCode").value("SH-600"))
+                .andExpect(jsonPath("$.items[0].status").value("ACTIVE"));
     }
 
     private String uploadRepresentative(MockHttpSession admin, long productId) throws Exception {

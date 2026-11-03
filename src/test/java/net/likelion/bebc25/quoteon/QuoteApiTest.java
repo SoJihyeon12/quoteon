@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -89,9 +90,13 @@ class QuoteApiTest {
                 .andExpect(jsonPath("$.items[0].salePrice").value(120000.00))
                 .andExpect(jsonPath("$.items[0].quantity").value(2))
                 .andExpect(jsonPath("$.items[0].amount").value(240000.00))
+                .andExpect(jsonPath("$.items[0].specification").value("600x330x1828mm"))
+                .andExpect(jsonPath("$.items[0].specificationSource").value("SNAPSHOT"))
                 .andExpect(jsonPath("$.items[1].productCode").value("OF-100"))
+                .andExpect(jsonPath("$.items[1].specification").value("1200x600x750mm"))
                 .andExpect(jsonPath("$.items[1].quantity").value(1))
                 .andExpect(jsonPath("$.items[1].amount").value(135000.00))
+                .andExpect(jsonPath("$.memo").value(nullValue()))
                 .andReturn();
         Number quoteId = JsonPath.read(result.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
         StoredQuote stored = storedQuote(quoteId.longValue());
@@ -399,6 +404,124 @@ class QuoteApiTest {
                 "$.items[*].id"
         );
         assertFalse(visibleIds.stream().anyMatch(id -> id.longValue() == newest));
+    }
+
+    @Test
+    void searchesOwnQuotesByCustomerNameAndQuoteDate() throws Exception {
+        SalesMember seller = loginActiveSales();
+        SalesMember other = loginActiveSales();
+        long matchingCustomerId = insertCustomer(seller.id(), "김진우");
+        long otherNameCustomerId = insertCustomer(seller.id(), "이영업");
+        long literalCustomerId = insertCustomer(seller.id(), "A%B");
+        long wildcardCustomerId = insertCustomer(seller.id(), "AXB");
+        long foreignCustomerId = insertCustomer(other.id(), "김진우");
+        long shoeId = productId("SH-600");
+
+        long oldest = createQuote(seller, matchingCustomerId, "2026-10-27", itemJson(shoeId, 1));
+        long middle = createQuote(seller, matchingCustomerId, "2026-10-28", itemJson(shoeId, 1));
+        long newest = createQuote(seller, matchingCustomerId, "2026-10-29", itemJson(shoeId, 1));
+        long differentName = createQuote(seller, otherNameCustomerId, "2026-10-29", itemJson(shoeId, 1));
+        long literal = createQuote(seller, literalCustomerId, "2026-10-29", itemJson(shoeId, 1));
+        long notLiteral = createQuote(seller, wildcardCustomerId, "2026-10-29", itemJson(shoeId, 1));
+        long foreign = createQuote(other, foreignCustomerId, "2026-10-29", itemJson(shoeId, 1));
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-27 09:00:00"), oldest);
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-28 09:00:00"), middle);
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-29 09:00:00"), newest);
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-30 09:00:00"), differentName);
+        jdbcTemplate.update("UPDATE quote SET created_at = ? WHERE id = ?", Timestamp.valueOf("2026-10-30 10:00:00"), foreign);
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("customerName", " 김 ")
+                        .param("memberId", String.valueOf(other.id()))
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(newest)))
+                .andExpect(jsonPath("$.items[0].customerName").value("김진우"))
+                .andExpect(jsonPath("$.items[1].id").value(jsonId(middle)))
+                .andExpect(jsonPath("$.items[0].memberId").doesNotExist());
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("customerName", "김")
+                        .param("page", "1")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(oldest)));
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("quoteDate", "2026-10-29"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(4))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.items[*].id", org.hamcrest.Matchers.containsInAnyOrder(
+                        jsonId(newest),
+                        jsonId(differentName),
+                        jsonId(literal),
+                        jsonId(notLiteral)
+                )));
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("customerName", "김진우")
+                        .param("quoteDate", " 2026-10-28 "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(middle)));
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("customerName", "없는고객")
+                        .param("quoteDate", "2026-10-29"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)))
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.totalPages").value(0));
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("customerName", " ")
+                        .param("quoteDate", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(6));
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("customerName", "A%B"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(literal)));
+
+        MvcResult otherList = mockMvc.perform(get("/api/quotes")
+                        .session(other.session())
+                        .param("customerName", "김진우")
+                        .param("quoteDate", "2026-10-29"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(foreign)))
+                .andReturn();
+        List<Number> visibleIds = JsonPath.read(
+                otherList.getResponse().getContentAsString(StandardCharsets.UTF_8),
+                "$.items[*].id"
+        );
+        assertFalse(visibleIds.stream().anyMatch(id -> id.longValue() == newest));
+
+        mockMvc.perform(get("/api/quotes")
+                        .session(seller.session())
+                        .param("quoteDate", "2026/10/29"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("작성일 형식을 확인해 주세요."));
     }
 
     @Test
@@ -719,6 +842,46 @@ class QuoteApiTest {
                 jdbcTemplate.update("DELETE FROM member WHERE id = ?", seller.id());
             }
         }
+    }
+
+    @Test
+    void storesMemoAndKeepsSpecificationAfterProductChange() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "메모고객");
+        long shoeId = productId("SH-600");
+        String body = """
+                {"customerId":%d,"quoteDate":"2026-11-03","memo":"  납기 확인  ","items":[%s]}
+                """.formatted(customerId, itemJson(shoeId, 1));
+
+        MvcResult created = mockMvc.perform(post("/api/quotes")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.memo").value("납기 확인"))
+                .andExpect(jsonPath("$.items[0].specification").value("600x330x1828mm"))
+                .andExpect(jsonPath("$.items[0].specificationSource").value("SNAPSHOT"))
+                .andReturn();
+        Number quoteId = JsonPath.read(created.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+
+        jdbcTemplate.update("UPDATE product SET specification = ? WHERE id = ?", "변경된 규격", shoeId);
+
+        mockMvc.perform(get("/api/quotes/{id}", quoteId.longValue()).session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.memo").value("납기 확인"))
+                .andExpect(jsonPath("$.items[0].specification").value("600x330x1828mm"))
+                .andExpect(jsonPath("$.items[0].specificationSource").value("SNAPSHOT"));
+
+        mockMvc.perform(put("/api/quotes/{id}", quoteId.longValue())
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quoteJson(customerId, "2026-11-03", itemJson(shoeId, 1))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.memo").value(nullValue()))
+                .andExpect(jsonPath("$.items[0].specification").value("변경된 규격"))
+                .andExpect(jsonPath("$.items[0].specificationSource").value("SNAPSHOT"));
     }
 
     private long createQuote(SalesMember seller, long customerId, String quoteDate, String items) throws Exception {

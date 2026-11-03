@@ -225,9 +225,9 @@ class AdminProductImageApiTest {
 
         mockMvc.perform(get("/api/products").session(sales))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)))
-                .andExpect(jsonPath("$[0].productCode").value("SH-600"))
-                .andExpect(jsonPath("$[0].detailImages").doesNotExist());
+                .andExpect(jsonPath("$.items", hasSize(3)))
+                .andExpect(jsonPath("$.items[0].productCode").value("SH-600"))
+                .andExpect(jsonPath("$.items[0].detailImages").doesNotExist());
         mockMvc.perform(get("/api/admin/products").session(admin))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].productCode").value("SH-600"))
@@ -322,7 +322,8 @@ class AdminProductImageApiTest {
         String path = pathOf(result, "$.imagePath");
         remember(path);
         assertTrue(path.startsWith("/images/products/"));
-        assertFalse(path.contains(filename));
+        assertFalse(path.endsWith("/" + filename));
+        assertTrue(path.matches("/images/products/[0-9a-fA-F-]{36}\\.(jpg|jpeg|png)"));
         return path;
     }
 
