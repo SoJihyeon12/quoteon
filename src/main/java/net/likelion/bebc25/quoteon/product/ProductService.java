@@ -5,7 +5,9 @@ import net.likelion.bebc25.quoteon.category.CategoryRepository;
 import net.likelion.bebc25.quoteon.product.dto.AdminProductDetailResponse;
 import net.likelion.bebc25.quoteon.product.dto.AdminProductPageResponse;
 import net.likelion.bebc25.quoteon.product.dto.AdminProductSummaryResponse;
+import net.likelion.bebc25.quoteon.product.dto.ProductPageResponse;
 import net.likelion.bebc25.quoteon.product.dto.ProductResponse;
+import net.likelion.bebc25.quoteon.product.dto.SalesProductDetailResponse;
 import net.likelion.bebc25.quoteon.product.dto.ProductDetailImageResponse;
 import net.likelion.bebc25.quoteon.product.dto.SaveProductRequest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -25,19 +27,54 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final ProductImageRepository productImageRepository;
+    private final ProductFavoriteRepository productFavoriteRepository;
 
     public ProductService(
             ProductRepository productRepository,
             CategoryRepository categoryRepository,
-            ProductImageRepository productImageRepository
+            ProductImageRepository productImageRepository,
+            ProductFavoriteRepository productFavoriteRepository
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.productImageRepository = productImageRepository;
+        this.productFavoriteRepository = productFavoriteRepository;
     }
 
-    public List<ProductResponse> getProducts(String keyword) {
-        return productRepository.findOnSale(normalizeKeyword(keyword));
+    public ProductPageResponse getProducts(
+            long memberId,
+            String keyword,
+            Long categoryId,
+            boolean favoriteOnly,
+            int page,
+            int size
+    ) {
+        if (page < DEFAULT_PAGE) {
+            throw new InvalidProductQueryException("페이지 번호는 0 이상이어야 합니다.");
+        }
+        if (size < 1 || size > MAX_SIZE) {
+            throw new InvalidProductQueryException("페이지 크기는 1 이상 100 이하여야 합니다.");
+        }
+        String normalizedKeyword = normalizeKeyword(keyword);
+        long totalElements = productRepository.countOnSale(memberId, normalizedKeyword, categoryId, favoriteOnly);
+        int totalPages = totalElements == 0 ? 0 : (int) ((totalElements + size - 1) / size);
+        List<ProductResponse> items = productRepository.findOnSale(
+                memberId,
+                normalizedKeyword,
+                categoryId,
+                favoriteOnly,
+                size,
+                (long) page * size
+        );
+        return new ProductPageResponse(items, page, size, totalElements, totalPages);
+    }
+
+    public SalesProductDetailResponse getOnSaleProduct(long memberId, long productId) {
+        SalesProductDetailResponse detail = productRepository.findOnSaleDetail(productId)
+                .orElseThrow(ProductNotFoundException::new);
+        return detail
+                .withFavorited(productFavoriteRepository.exists(memberId, productId))
+                .withDetailImages(productImageRepository.findByProductId(productId));
     }
 
     public AdminProductPageResponse getAdminProducts(
@@ -77,7 +114,10 @@ public class ProductService {
     public AdminProductDetailResponse getAdminProduct(long productId) {
         AdminProductDetailResponse detail = productRepository.findAdminDetailById(productId)
                 .orElseThrow(ProductNotFoundException::new);
-        return detail.withDetailImages(productImageRepository.findByProductId(productId));
+        boolean usedInQuotes = productRepository.countQuoteItems(productId) > 0;
+        return detail
+                .withUsedInQuotes(usedInQuotes)
+                .withDetailImages(productImageRepository.findByProductId(productId));
     }
 
     public AdminProductDetailResponse create(SaveProductRequest request) {
@@ -132,6 +172,21 @@ public class ProductService {
                 throw new ProductNotFoundException();
             }
             throw new ProductStatusConflictException("판매 중인 제품만 판매 중지할 수 있습니다.");
+        }
+        return getAdminProduct(productId);
+    }
+
+    public AdminProductDetailResponse resumeSale(long productId) {
+        int updated = productRepository.updateStatusIfCurrent(
+                productId,
+                ProductRepository.ON_SALE_STATUS,
+                ProductRepository.STOPPED_STATUS
+        );
+        if (updated != 1) {
+            if (productRepository.findRepresentative(productId).isEmpty()) {
+                throw new ProductNotFoundException();
+            }
+            throw new ProductStatusConflictException("판매 중지된 제품만 판매를 재개할 수 있습니다.");
         }
         return getAdminProduct(productId);
     }

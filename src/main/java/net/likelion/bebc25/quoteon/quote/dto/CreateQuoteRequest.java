@@ -14,6 +14,7 @@ public record CreateQuoteRequest(
         LocalDate quoteDate,
         @NotEmpty(message = "견적 항목을 한 개 이상 입력해 주세요.")
         @Valid
-        List<CreateQuoteItemRequest> items
+        List<CreateQuoteItemRequest> items,
+        String memo
 ) {
 }

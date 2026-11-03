@@ -14,6 +14,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -23,6 +24,12 @@ import java.util.Optional;
 public class QuoteRepository {
 
     static final String DRAFT = "DRAFT";
+
+    private static final String LIST_FILTER = """
+            WHERE q.member_id = ?
+              AND (? = 0 OR c.name LIKE ? ESCAPE '\\\\')
+              AND (? = 0 OR q.quote_date = ?)
+            """;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -37,14 +44,15 @@ public class QuoteRepository {
             BigDecimal supplyAmount,
             BigDecimal vatAmount,
             BigDecimal totalAmount,
-            LocalDate quoteDate
+            LocalDate quoteDate,
+            String memo
     ) {
         String sql = """
                 INSERT INTO quote (
                     quote_number, member_id, customer_id,
-                    supply_amount, vat_amount, total_amount, status, quote_date
+                    supply_amount, vat_amount, total_amount, status, quote_date, memo
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
@@ -57,6 +65,7 @@ public class QuoteRepository {
             statement.setBigDecimal(6, totalAmount);
             statement.setString(7, DRAFT);
             statement.setDate(8, Date.valueOf(quoteDate));
+            statement.setString(9, memo);
             return statement;
         }, keyHolder);
         Number key = keyHolder.getKey();
@@ -73,11 +82,12 @@ public class QuoteRepository {
             BigDecimal supplyAmount,
             BigDecimal vatAmount,
             BigDecimal totalAmount,
-            LocalDate quoteDate
+            LocalDate quoteDate,
+            String memo
     ) {
         String sql = """
                 UPDATE quote
-                SET customer_id = ?, supply_amount = ?, vat_amount = ?, total_amount = ?, quote_date = ?
+                SET customer_id = ?, supply_amount = ?, vat_amount = ?, total_amount = ?, quote_date = ?, memo = ?
                 WHERE id = ? AND member_id = ?
                 """;
         return jdbcTemplate.update(
@@ -87,6 +97,7 @@ public class QuoteRepository {
                 vatAmount,
                 totalAmount,
                 Date.valueOf(quoteDate),
+                memo,
                 quoteId,
                 memberId
         );
@@ -99,9 +110,10 @@ public class QuoteRepository {
     public void insertItems(long quoteId, List<QuoteItemWrite> items) {
         String sql = """
                 INSERT INTO quote_item (
-                    quote_id, product_id, product_name, product_code, sale_price, quantity, amount
+                    quote_id, product_id, product_name, product_code,
+                    specification, specification_source, sale_price, quantity, amount
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         for (QuoteItemWrite item : items) {
             jdbcTemplate.update(
@@ -110,6 +122,8 @@ public class QuoteRepository {
                     item.productId(),
                     item.productName(),
                     item.productCode(),
+                    item.specification(),
+                    item.specificationSource(),
                     item.salePrice(),
                     item.quantity(),
                     item.amount()
@@ -124,7 +138,7 @@ public class QuoteRepository {
     public Optional<QuoteAccess> findAccessById(long id) {
         String sql = """
                 SELECT q.id, q.member_id, q.quote_number, q.customer_id, c.name AS customer_name,
-                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at
+                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at, q.memo
                 FROM quote q
                 INNER JOIN customer c ON c.id = q.customer_id
                 WHERE q.id = ?
@@ -137,29 +151,33 @@ public class QuoteRepository {
         return Optional.of(new QuoteAccess(header.memberId(), toResponse(header, findItems(id))));
     }
 
-    public long countByMember(long memberId) {
-        Long count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM quote WHERE member_id = ?",
-                Long.class,
-                memberId
-        );
+    public long countByMember(QuoteListQuery query) {
+        String sql = """
+                SELECT COUNT(*)
+                FROM quote q
+                INNER JOIN customer c ON c.id = q.customer_id
+                """ + LIST_FILTER;
+        Long count = jdbcTemplate.query(sql, ps -> bindListFilter(ps, query), rs -> {
+            rs.next();
+            return rs.getLong(1);
+        });
         return count == null ? 0 : count;
     }
 
-    public List<QuoteSummaryResponse> findByMember(long memberId, int limit, long offset) {
+    public List<QuoteSummaryResponse> findByMember(QuoteListQuery query, int limit, long offset) {
         String sql = """
                 SELECT q.id, q.member_id, q.quote_number, q.customer_id, c.name AS customer_name,
-                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at
+                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at, q.memo
                 FROM quote q
                 INNER JOIN customer c ON c.id = q.customer_id
-                WHERE q.member_id = ?
+                """ + LIST_FILTER + """
                 ORDER BY q.created_at DESC, q.id DESC
                 LIMIT ? OFFSET ?
                 """;
         return jdbcTemplate.query(sql, ps -> {
-            ps.setLong(1, memberId);
-            ps.setInt(2, limit);
-            ps.setLong(3, offset);
+            int next = bindListFilter(ps, query);
+            ps.setInt(next, limit);
+            ps.setLong(next + 1, offset);
         }, (rs, rowNum) -> {
             QuoteHeader header = mapHeader(rs, rowNum);
             return new QuoteSummaryResponse(
@@ -177,6 +195,30 @@ public class QuoteRepository {
         });
     }
 
+    private static int bindListFilter(PreparedStatement statement, QuoteListQuery query) throws SQLException {
+        int index = 1;
+        statement.setLong(index++, query.memberId());
+        boolean hasName = query.customerName() != null;
+        statement.setInt(index++, hasName ? 1 : 0);
+        statement.setString(index++, hasName ? containsPattern(query.customerName()) : "%");
+        boolean hasDate = query.quoteDate() != null;
+        statement.setInt(index++, hasDate ? 1 : 0);
+        if (hasDate) {
+            statement.setDate(index++, Date.valueOf(query.quoteDate()));
+        } else {
+            statement.setNull(index++, Types.DATE);
+        }
+        return index;
+    }
+
+    private static String containsPattern(String value) {
+        String escaped = value
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+        return "%" + escaped + "%";
+    }
+
     private QuoteHeader mapHeader(ResultSet rs, int rowNum) throws SQLException {
         return new QuoteHeader(
                 rs.getLong("id"),
@@ -189,7 +231,8 @@ public class QuoteRepository {
                 rs.getBigDecimal("total_amount"),
                 rs.getString("status"),
                 rs.getObject("quote_date", LocalDate.class),
-                rs.getObject("created_at", LocalDateTime.class)
+                rs.getObject("created_at", LocalDateTime.class),
+                rs.getString("memo")
         );
     }
 
@@ -205,13 +248,15 @@ public class QuoteRepository {
                 header.status(),
                 header.quoteDate(),
                 header.createdAt(),
+                header.memo(),
                 items
         );
     }
 
     private List<QuoteItemResponse> findItems(long quoteId) {
         String sql = """
-                SELECT id, product_id, product_name, product_code, sale_price, quantity, amount
+                SELECT id, product_id, product_name, product_code, specification, specification_source,
+                       sale_price, quantity, amount
                 FROM quote_item
                 WHERE quote_id = ?
                 ORDER BY id
@@ -221,6 +266,8 @@ public class QuoteRepository {
                 rs.getLong("product_id"),
                 rs.getString("product_name"),
                 rs.getString("product_code"),
+                rs.getString("specification"),
+                rs.getString("specification_source"),
                 rs.getBigDecimal("sale_price"),
                 rs.getInt("quantity"),
                 rs.getBigDecimal("amount")
@@ -238,7 +285,8 @@ public class QuoteRepository {
             BigDecimal totalAmount,
             String status,
             LocalDate quoteDate,
-            LocalDateTime createdAt
+            LocalDateTime createdAt,
+            String memo
     ) {
     }
 }

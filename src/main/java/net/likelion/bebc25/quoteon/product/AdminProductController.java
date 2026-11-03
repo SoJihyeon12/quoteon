@@ -84,6 +84,11 @@ public class AdminProductController {
         return productService.stopSale(productId);
     }
 
+    @PostMapping("/{productId}/resume")
+    public AdminProductDetailResponse resumeSale(@PathVariable long productId) {
+        return productService.resumeSale(productId);
+    }
+
     @DeleteMapping("/{productId}")
     public AdminProductDetailResponse delete(@PathVariable long productId) {
         return productRemovalService.delete(productId);

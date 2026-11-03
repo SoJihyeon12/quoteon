@@ -21,6 +21,16 @@ spring:
       hibernate:
         format_sql: true
 
+# SMTP 접속값은 환경 변수로만 받는다. 값이 없으면 애플리케이션은 기동되고, 발송 요청만 실패한다.
+quoteon:
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    smtp-auth: ${MAIL_PROPERTIES_MAIL_SMTP_AUTH:}
+    starttls-enable: ${MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:}
+
 server:
   port: 8080
   servlet:

@@ -21,6 +21,9 @@ import net.likelion.bebc25.quoteon.product.InvalidImageSlotException;
 import net.likelion.bebc25.quoteon.product.InvalidProductImageException;
 import net.likelion.bebc25.quoteon.product.InvalidProductImagePathException;
 import net.likelion.bebc25.quoteon.product.InvalidProductQueryException;
+import net.likelion.bebc25.quoteon.product.FavoriteAlreadyExistsException;
+import net.likelion.bebc25.quoteon.product.FavoriteNotFoundException;
+import net.likelion.bebc25.quoteon.product.FavoriteProductUnavailableException;
 import net.likelion.bebc25.quoteon.product.ProductCodeExistsException;
 import net.likelion.bebc25.quoteon.product.ProductImageNotFoundException;
 import net.likelion.bebc25.quoteon.product.ProductInUseException;
@@ -30,7 +33,13 @@ import net.likelion.bebc25.quoteon.product.ProductNotActiveException;
 import net.likelion.bebc25.quoteon.product.ProductNotFoundException;
 import net.likelion.bebc25.quoteon.quote.InvalidQuoteQueryException;
 import net.likelion.bebc25.quoteon.quote.QuoteAccessDeniedException;
+import net.likelion.bebc25.quoteon.quote.QuoteEmailHistoryNotFoundException;
+import net.likelion.bebc25.quoteon.quote.QuoteEmailRetryNotAllowedException;
+import net.likelion.bebc25.quoteon.quote.QuoteEmailSendException;
+import net.likelion.bebc25.quoteon.quote.QuoteEmailStatusException;
+import net.likelion.bebc25.quoteon.quote.QuoteMailNotConfiguredException;
 import net.likelion.bebc25.quoteon.quote.QuoteNotEditableException;
+import net.likelion.bebc25.quoteon.quote.QuoteDocumentException;
 import net.likelion.bebc25.quoteon.quote.QuoteNotFoundException;
 import net.likelion.bebc25.quoteon.quote.DuplicateProductException;
 import org.slf4j.Logger;
@@ -308,6 +317,87 @@ public class ApiExceptionHandler {
                         "PRODUCT_NOT_FOUND",
                         "제품을 찾을 수 없습니다."
                 ));
+    }
+
+    @ExceptionHandler(FavoriteAlreadyExistsException.class)
+    public ResponseEntity<ApiErrorResponse> handleFavoriteAlreadyExists(FavoriteAlreadyExistsException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "FAVORITE_EXISTS",
+                        "이미 즐겨찾기에 등록된 제품입니다."
+                ));
+    }
+
+    @ExceptionHandler(FavoriteNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleFavoriteNotFound(FavoriteNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "FAVORITE_NOT_FOUND",
+                        "즐겨찾기에 등록되지 않은 제품입니다."
+                ));
+    }
+
+    @ExceptionHandler(FavoriteProductUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleFavoriteProductUnavailable(
+            FavoriteProductUnavailableException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "FAVORITE_PRODUCT_UNAVAILABLE",
+                        exception.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(QuoteMailNotConfiguredException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteMailNotConfigured(QuoteMailNotConfiguredException exception) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiErrorResponse.of(500, "MAIL_NOT_CONFIGURED", exception.getMessage()));
+    }
+
+    @ExceptionHandler(QuoteEmailHistoryNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteEmailHistoryNotFound(
+            QuoteEmailHistoryNotFoundException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "EMAIL_HISTORY_NOT_FOUND",
+                        "이메일 발송 이력을 찾을 수 없습니다."
+                ));
+    }
+
+    @ExceptionHandler(QuoteEmailRetryNotAllowedException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteEmailRetryNotAllowed(
+            QuoteEmailRetryNotAllowedException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "EMAIL_RETRY_NOT_ALLOWED",
+                        "실패한 이메일 발송만 재시도할 수 있습니다."
+                ));
+    }
+
+    @ExceptionHandler(QuoteEmailSendException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteEmailSend(QuoteEmailSendException exception) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiErrorResponse.of(500, "EMAIL_SEND_FAILED", exception.getMessage()));
+    }
+
+    @ExceptionHandler(QuoteEmailStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteEmailStatus(QuoteEmailStatusException exception) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiErrorResponse.of(500, "EMAIL_STATUS_NOT_SAVED", exception.getMessage()));
+    }
+
+    @ExceptionHandler(QuoteDocumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuoteDocument(QuoteDocumentException exception) {
+        log.error("quote document generation failed", exception);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiErrorResponse.of(500, "DOCUMENT_GENERATION_FAILED", "견적서를 생성하지 못했습니다."));
     }
 
     @ExceptionHandler(QuoteNotFoundException.class)

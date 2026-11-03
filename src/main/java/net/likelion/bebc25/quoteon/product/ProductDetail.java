@@ -7,6 +7,7 @@ public record ProductDetail(
         String productCode,
         String name,
         BigDecimal salePrice,
-        String status
+        String status,
+        String specification
 ) {
 }

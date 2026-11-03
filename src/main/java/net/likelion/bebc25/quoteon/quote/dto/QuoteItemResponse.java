@@ -7,6 +7,8 @@ public record QuoteItemResponse(
         long productId,
         String productName,
         String productCode,
+        String specification,
+        String specificationSource,
         BigDecimal salePrice,
         int quantity,
         BigDecimal amount

@@ -3,6 +3,7 @@ package net.likelion.bebc25.quoteon.product;
 import net.likelion.bebc25.quoteon.product.dto.AdminProductDetailResponse;
 import net.likelion.bebc25.quoteon.product.dto.AdminProductSummaryResponse;
 import net.likelion.bebc25.quoteon.product.dto.ProductResponse;
+import net.likelion.bebc25.quoteon.product.dto.SalesProductDetailResponse;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -33,7 +34,14 @@ public class ProductRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<ProductResponse> findOnSale(String keyword) {
+    public List<ProductResponse> findOnSale(
+            long memberId,
+            String keyword,
+            Long categoryId,
+            boolean favoriteOnly,
+            int limit,
+            long offset
+    ) {
         String sql = """
                 SELECT p.id,
                        p.product_code,
@@ -42,30 +50,86 @@ public class ProductRepository {
                        p.category_id,
                        c.name AS category_name,
                        p.image_path,
-                       p.status
+                       p.status,
+                       CASE WHEN f.product_id IS NULL THEN 0 ELSE 1 END AS favorited
                 FROM product p
                 INNER JOIN category c ON c.id = p.category_id
+                LEFT JOIN product_favorite f
+                       ON f.product_id = p.id
+                      AND f.member_id = ?
                 WHERE p.status = ?
                   AND (
                         ? = 0
                         OR p.name LIKE ? ESCAPE '\\\\'
                         OR p.product_code LIKE ? ESCAPE '\\\\'
                       )
+                  AND (? = 0 OR p.category_id = ?)
+                  AND (? = 0 OR f.product_id IS NOT NULL)
                 ORDER BY p.id
+                LIMIT ? OFFSET ?
                 """;
-        boolean hasKeyword = keyword != null;
-        String pattern = hasKeyword ? toContainsPattern(keyword) : "%";
+        return jdbcTemplate.query(
+                sql,
+                ps -> bindOnSale(ps, memberId, keyword, categoryId, favoriteOnly, limit, offset),
+                ROW_MAPPER
+        );
+    }
+
+    public long countOnSale(long memberId, String keyword, Long categoryId, boolean favoriteOnly) {
+        String sql = """
+                SELECT COUNT(*)
+                FROM product p
+                LEFT JOIN product_favorite f
+                       ON f.product_id = p.id
+                      AND f.member_id = ?
+                WHERE p.status = ?
+                  AND (
+                        ? = 0
+                        OR p.name LIKE ? ESCAPE '\\\\'
+                        OR p.product_code LIKE ? ESCAPE '\\\\'
+                      )
+                  AND (? = 0 OR p.category_id = ?)
+                  AND (? = 0 OR f.product_id IS NOT NULL)
+                """;
+        Long count = jdbcTemplate.query(
+                sql,
+                ps -> bindOnSale(ps, memberId, keyword, categoryId, favoriteOnly, null, null),
+                rs -> {
+                    rs.next();
+                    return rs.getLong(1);
+                }
+        );
+        return count == null ? 0 : count;
+    }
+
+    public Optional<SalesProductDetailResponse> findOnSaleDetail(long id) {
+        String sql = """
+                SELECT id, product_code, name, unit_price, sale_price, specification, description, image_path, status
+                FROM product
+                WHERE id = ?
+                  AND status = ?
+                """;
         return jdbcTemplate.query(sql, ps -> {
-            ps.setString(1, ON_SALE_STATUS);
-            ps.setInt(2, hasKeyword ? 1 : 0);
-            ps.setString(3, pattern);
-            ps.setString(4, pattern);
-        }, ROW_MAPPER);
+            ps.setLong(1, id);
+            ps.setString(2, ON_SALE_STATUS);
+        }, (rs, rowNum) -> new SalesProductDetailResponse(
+                rs.getLong("id"),
+                rs.getString("product_code"),
+                rs.getString("name"),
+                rs.getBigDecimal("unit_price"),
+                rs.getBigDecimal("sale_price"),
+                rs.getString("specification"),
+                rs.getString("description"),
+                rs.getString("image_path"),
+                rs.getString("status"),
+                false,
+                List.of()
+        )).stream().findFirst();
     }
 
     public Optional<ProductDetail> findById(long id) {
         String sql = """
-                SELECT id, product_code, name, sale_price, status
+                SELECT id, product_code, name, sale_price, status, specification
                 FROM product
                 WHERE id = ?
                 """;
@@ -81,7 +145,8 @@ public class ProductRepository {
                 rs.getLong("category_id"),
                 rs.getString("category_name"),
                 rs.getString("image_path"),
-                rs.getString("status")
+                rs.getString("status"),
+                rs.getInt("favorited") == 1
         );
     }
 
@@ -91,8 +156,38 @@ public class ProductRepository {
                 rs.getString("product_code"),
                 rs.getString("name"),
                 rs.getBigDecimal("sale_price"),
-                rs.getString("status")
+                rs.getString("status"),
+                rs.getString("specification")
         );
+    }
+
+    private static void bindOnSale(
+            PreparedStatement statement,
+            long memberId,
+            String keyword,
+            Long categoryId,
+            boolean favoriteOnly,
+            Integer limit,
+            Long offset
+    ) throws SQLException {
+        boolean hasKeyword = keyword != null;
+        String pattern = hasKeyword ? toContainsPattern(keyword) : "%";
+        statement.setLong(1, memberId);
+        statement.setString(2, ON_SALE_STATUS);
+        statement.setInt(3, hasKeyword ? 1 : 0);
+        statement.setString(4, pattern);
+        statement.setString(5, pattern);
+        statement.setInt(6, categoryId == null ? 0 : 1);
+        if (categoryId == null) {
+            statement.setNull(7, Types.BIGINT);
+        } else {
+            statement.setLong(7, categoryId);
+        }
+        statement.setInt(8, favoriteOnly ? 1 : 0);
+        if (limit != null && offset != null) {
+            statement.setInt(9, limit);
+            statement.setLong(10, offset);
+        }
     }
 
     private static String toContainsPattern(String keyword) {
@@ -369,6 +464,7 @@ public class ProductRepository {
                     rs.getString("description"),
                     rs.getString("image_path"),
                     rs.getString("status"),
+                    false,
                     List.of()
             );
 }

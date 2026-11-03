@@ -21,6 +21,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -51,16 +53,17 @@ public class QuoteService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    public QuotePageResponse list(long memberId, int page, int size) {
+    public QuotePageResponse list(long memberId, String customerName, String quoteDate, int page, int size) {
         if (page < DEFAULT_PAGE) {
             throw new InvalidQuoteQueryException("페이지 번호는 0 이상이어야 합니다.");
         }
         if (size < 1 || size > MAX_PAGE_SIZE) {
             throw new InvalidQuoteQueryException("페이지 크기는 1 이상 100 이하여야 합니다.");
         }
-        long totalElements = quoteRepository.countByMember(memberId);
+        QuoteListQuery query = new QuoteListQuery(memberId, normalize(customerName), parseQuoteDate(quoteDate));
+        long totalElements = quoteRepository.countByMember(query);
         int totalPages = totalElements == 0 ? 0 : (int) ((totalElements + size - 1) / size);
-        List<QuoteSummaryResponse> items = quoteRepository.findByMember(memberId, size, (long) page * size);
+        List<QuoteSummaryResponse> items = quoteRepository.findByMember(query, size, (long) page * size);
         return new QuotePageResponse(items, page, size, totalElements, totalPages);
     }
 
@@ -121,7 +124,8 @@ public class QuoteService {
                 priced.supplyAmount(),
                 priced.vatAmount(),
                 priced.totalAmount(),
-                request.quoteDate()
+                request.quoteDate(),
+                normalize(request.memo())
         );
         if (updated != 1) {
             throw new QuoteNotFoundException();
@@ -157,6 +161,8 @@ public class QuoteService {
                     product.id(),
                     product.name(),
                     product.productCode(),
+                    normalize(product.specification()),
+                    SpecificationSource.SNAPSHOT,
                     product.salePrice(),
                     item.quantity(),
                     amount
@@ -173,6 +179,26 @@ public class QuoteService {
     static BigDecimal vatAmount(BigDecimal supplyAmount) {
         // 공급가액의 10%를 원 단위로 반올림한다.
         return supplyAmount.multiply(VAT_RATE).setScale(0, RoundingMode.HALF_UP);
+    }
+
+    private static LocalDate parseQuoteDate(String value) {
+        String normalized = normalize(value);
+        if (normalized == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(normalized);
+        } catch (DateTimeParseException exception) {
+            throw new InvalidQuoteQueryException("작성일 형식을 확인해 주세요.");
+        }
+    }
+
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private void rejectDuplicateProducts(List<CreateQuoteItemRequest> items) {
@@ -203,7 +229,8 @@ public class QuoteService {
                         supplyAmount,
                         vatAmount,
                         totalAmount,
-                        request.quoteDate()
+                        request.quoteDate(),
+                        normalize(request.memo())
                 );
             } catch (DuplicateKeyException exception) {
                 lastConflict = exception;

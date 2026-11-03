@@ -15,6 +15,7 @@ public record AdminProductDetailResponse(
         String description,
         String imagePath,
         String status,
+        boolean usedInQuotes,
         List<ProductDetailImageResponse> detailImages
 ) {
     public AdminProductDetailResponse withDetailImages(List<ProductDetailImageResponse> detailImages) {
@@ -30,7 +31,26 @@ public record AdminProductDetailResponse(
                 description,
                 imagePath,
                 status,
+                usedInQuotes,
                 detailImages == null ? List.of() : List.copyOf(detailImages)
+        );
+    }
+
+    public AdminProductDetailResponse withUsedInQuotes(boolean usedInQuotes) {
+        return new AdminProductDetailResponse(
+                id,
+                categoryId,
+                categoryName,
+                name,
+                productCode,
+                unitPrice,
+                salePrice,
+                specification,
+                description,
+                imagePath,
+                status,
+                usedInQuotes,
+                detailImages
         );
     }
 }

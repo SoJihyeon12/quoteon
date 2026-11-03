@@ -10,6 +10,7 @@ public record ProductResponse(
         Long categoryId,
         String categoryName,
         String imagePath,
-        String status
+        String status,
+        boolean favorited
 ) {
 }
