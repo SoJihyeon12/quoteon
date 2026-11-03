@@ -35,7 +35,8 @@ public class MemberRepository {
             rs.getString("phone"),
             rs.getString("company_name"),
             rs.getString("role"),
-            rs.getString("status")
+            rs.getString("status"),
+            rs.getString("deactivation_reason")
     );
 
     private static final RowMapper<Member> ROW_MAPPER = (rs, rowNum) -> new Member(
@@ -75,7 +76,7 @@ public class MemberRepository {
 
     public Optional<MemberSummary> findSummaryById(long id) {
         String sql = """
-                SELECT id, name, email, phone, company_name, role, status
+                SELECT id, name, email, phone, company_name, role, status, deactivation_reason
                 FROM member
                 WHERE id = ?
                 """;
@@ -160,7 +161,7 @@ public class MemberRepository {
 
     public List<MemberSummary> findMembers(String keyword, int limit, long offset) {
         String sql = """
-                SELECT id, name, email, phone, company_name, role, status
+                SELECT id, name, email, phone, company_name, role, status, deactivation_reason
                 FROM member
                 WHERE (
                         ? = 0
@@ -220,11 +221,27 @@ public class MemberRepository {
     public int updateStatusIfCurrent(long id, String newStatus, String expectedStatus) {
         String sql = """
                 UPDATE member
-                SET status = ?
+                SET status = ?, deactivation_reason = NULL
                 WHERE id = ?
                   AND status = ?
                 """;
         return jdbcTemplate.update(sql, newStatus, id, expectedStatus);
+    }
+
+    public int deactivateIfActive(long id, String deactivationReason) {
+        String sql = """
+                UPDATE member
+                SET status = ?, deactivation_reason = ?
+                WHERE id = ?
+                  AND status = ?
+                """;
+        return jdbcTemplate.update(
+                sql,
+                MemberStatus.INACTIVE,
+                deactivationReason,
+                id,
+                MemberStatus.ACTIVE
+        );
     }
 
     public int updateStatusIfPending(long id, String status) {

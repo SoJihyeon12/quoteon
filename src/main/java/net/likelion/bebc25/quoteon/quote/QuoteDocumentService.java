@@ -45,11 +45,10 @@ public class QuoteDocumentService {
     }
 
     private AdminQuoteDetailResponse ownedQuote(long memberId, long quoteId) {
-        QuoteAccess access = quoteRepository.findAccessById(quoteId)
-                .orElseThrow(QuoteNotFoundException::new);
-        if (access.memberId() != memberId) {
-            throw new QuoteAccessDeniedException();
-        }
+        SalesQuoteAccess.requireAccessible(
+                quoteRepository.findAccessById(quoteId).orElseThrow(QuoteNotFoundException::new),
+                memberId
+        );
         return adminQuoteService.get(quoteId);
     }
 

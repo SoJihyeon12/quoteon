@@ -80,7 +80,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(new JsonAccessDeniedHandler()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/signup", "/api/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/signup", "/api/login", "/api/logout").permitAll()
                         .requestMatchers("/api/admin/**").hasAuthority(MemberRole.ADMIN)
                         .requestMatchers("/api/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/images/products/**").permitAll()

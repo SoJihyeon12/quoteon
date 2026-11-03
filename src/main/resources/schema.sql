@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS member (
                                       company_name VARCHAR(255),
                                       role VARCHAR(30) NOT NULL DEFAULT 'ROLE_USER',
                                       status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+                                      deactivation_reason VARCHAR(255) NULL,
                                       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
                                           ON UPDATE CURRENT_TIMESTAMP
@@ -101,6 +102,8 @@ CREATE TABLE IF NOT EXISTS quote (
                                      total_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
                                      status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
                                      memo TEXT,
+                                     payment_method VARCHAR(20) NULL,
+                                     is_private TINYINT(1) NOT NULL DEFAULT 0,
                                      quote_date DATE NOT NULL,
                                      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

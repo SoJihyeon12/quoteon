@@ -222,6 +222,44 @@ class AuthApiTest {
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://127.0.0.1:5173"));
     }
 
+    @Test
+    void logoutWithoutSessionStillSucceedsWhenCsrfIsPresent() throws Exception {
+        mockMvc.perform(post("/api/logout").with(csrf()))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void logoutWithoutCsrfIsStillRejected() throws Exception {
+        mockMvc.perform(post("/api/logout"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CSRF"));
+    }
+
+    @Test
+    void inactiveMemberCanLogoutEvenWhenOtherApisAreBlocked() throws Exception {
+        String email = email();
+        MvcResult signup = signup(email, "password1234");
+        MockHttpSession session = (MockHttpSession) signup.getRequest().getSession(false);
+        Number id = JsonPath.read(signup.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+        jdbcTemplate.update(
+                "UPDATE member SET status = 'INACTIVE' WHERE id = ? AND email = ?",
+                id.longValue(),
+                email
+        );
+
+        mockMvc.perform(get("/api/me").session(session))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("INACTIVE"));
+        mockMvc.perform(post("/api/logout").with(csrf()).session(session))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/me").session(session))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
     private MvcResult signup(String email, String password) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/signup")
                         .with(csrf())

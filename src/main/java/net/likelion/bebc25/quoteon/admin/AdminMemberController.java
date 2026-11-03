@@ -1,6 +1,7 @@
 package net.likelion.bebc25.quoteon.admin;
 
 import jakarta.validation.Valid;
+import net.likelion.bebc25.quoteon.admin.dto.DeactivateMemberRequest;
 import net.likelion.bebc25.quoteon.admin.dto.MemberSummaryPageResponse;
 import net.likelion.bebc25.quoteon.admin.dto.MemberSummaryResponse;
 import net.likelion.bebc25.quoteon.admin.dto.PendingMemberPageResponse;
@@ -57,8 +58,11 @@ public class AdminMemberController {
     }
 
     @PostMapping("/{memberId}/deactivate")
-    public MemberSummaryResponse deactivate(@PathVariable long memberId) {
-        return adminMemberService.deactivate(memberId);
+    public MemberSummaryResponse deactivate(
+            @PathVariable long memberId,
+            @Valid @RequestBody DeactivateMemberRequest request
+    ) {
+        return adminMemberService.deactivate(memberId, request);
     }
 
     @PostMapping("/{memberId}/activate")

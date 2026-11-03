@@ -97,12 +97,14 @@ class QuoteApiTest {
                 .andExpect(jsonPath("$.items[1].quantity").value(1))
                 .andExpect(jsonPath("$.items[1].amount").value(135000.00))
                 .andExpect(jsonPath("$.memo").value(nullValue()))
+                .andExpect(jsonPath("$.paymentMethod").value("CASH"))
                 .andReturn();
         Number quoteId = JsonPath.read(result.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
         StoredQuote stored = storedQuote(quoteId.longValue());
         assertEquals(seller.id(), stored.memberId());
         assertEquals(customerId, stored.customerId());
         assertEquals("DRAFT", stored.status());
+        assertEquals("CASH", stored.paymentMethod());
         assertEquals(0, new BigDecimal("375000.00").compareTo(stored.supplyAmount()));
         assertEquals(0, new BigDecimal("37500").compareTo(stored.vatAmount()));
         assertEquals(0, new BigDecimal("412500.00").compareTo(stored.totalAmount()));
@@ -263,7 +265,7 @@ class QuoteApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-10-29","items":[]}
+                                {"customerId":%d,"quoteDate":"2026-10-29","paymentMethod":"CASH","items":[]}
                                 """.formatted(customerId)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
@@ -622,7 +624,7 @@ class QuoteApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-11-02","quoteNumber":"Q-HACK","status":"CANCELLED","items":[%s]}
+                                {"customerId":%d,"quoteDate":"2026-11-02","quoteNumber":"Q-HACK","status":"CANCELLED","paymentMethod":"CASH","items":[%s]}
                                 """.formatted(nextCustomerId, itemJson(productId, 1))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(jsonId(quoteId)))
@@ -771,7 +773,7 @@ class QuoteApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-10-29","items":[]}
+                                {"customerId":%d,"quoteDate":"2026-10-29","paymentMethod":"CASH","items":[]}
                                 """.formatted(customerId)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("견적 항목을 한 개 이상 입력해 주세요."));
@@ -850,7 +852,7 @@ class QuoteApiTest {
         long customerId = insertCustomer(seller.id(), "메모고객");
         long shoeId = productId("SH-600");
         String body = """
-                {"customerId":%d,"quoteDate":"2026-11-03","memo":"  납기 확인  ","items":[%s]}
+                {"customerId":%d,"quoteDate":"2026-11-03","memo":"  납기 확인  ","paymentMethod":"CASH","items":[%s]}
                 """.formatted(customerId, itemJson(shoeId, 1));
 
         MvcResult created = mockMvc.perform(post("/api/quotes")
@@ -882,6 +884,67 @@ class QuoteApiTest {
                 .andExpect(jsonPath("$.memo").value(nullValue()))
                 .andExpect(jsonPath("$.items[0].specification").value("변경된 규격"))
                 .andExpect(jsonPath("$.items[0].specificationSource").value("SNAPSHOT"));
+    }
+
+    @Test
+    void storesAndUpdatesPaymentMethodAndRejectsInvalidValues() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "결제고객");
+        String createBody = """
+                {"customerId":%d,"quoteDate":"2026-11-03","paymentMethod":"CARD","items":[%s]}
+                """.formatted(customerId, itemJson(productId("SH-600"), 1));
+
+        MvcResult created = mockMvc.perform(post("/api/quotes")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.paymentMethod").value("CARD"))
+                .andReturn();
+        Number quoteId = JsonPath.read(created.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+        assertEquals("CARD", storedQuote(quoteId.longValue()).paymentMethod());
+
+        mockMvc.perform(put("/api/quotes/{id}", quoteId.longValue())
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerId":%d,"quoteDate":"2026-11-03","paymentMethod":"CASH","items":[%s]}
+                                """.formatted(customerId, itemJson(productId("SH-600"), 2))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentMethod").value("CASH"));
+
+        mockMvc.perform(post("/api/quotes")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerId":%d,"quoteDate":"2026-11-03","items":[%s]}
+                                """.formatted(customerId, itemJson(productId("SH-600"), 1))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/quotes")
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerId":%d,"quoteDate":"2026-11-03","paymentMethod":"TRANSFER","items":[%s]}
+                                """.formatted(customerId, itemJson(productId("SH-600"), 1))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void readsLegacyQuotesWithNullPaymentMethod() throws Exception {
+        SalesMember seller = loginActiveSales();
+        long customerId = insertCustomer(seller.id(), "기존결제");
+        long quoteId = createQuote(seller, customerId, "2026-11-03", itemJson(productId("SH-600"), 1));
+        jdbcTemplate.update("UPDATE quote SET payment_method = NULL WHERE id = ?", quoteId);
+
+        mockMvc.perform(get("/api/quotes/{id}", quoteId).session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentMethod").value(nullValue()))
+                .andExpect(jsonPath("$.customerId").value(jsonId(customerId)));
     }
 
     private long createQuote(SalesMember seller, long customerId, String quoteDate, String items) throws Exception {
@@ -1061,7 +1124,7 @@ class QuoteApiTest {
 
     private StoredQuote storedQuote(long quoteId) {
         return jdbcTemplate.queryForObject("""
-                SELECT member_id, customer_id, supply_amount, vat_amount, total_amount, status
+                SELECT member_id, customer_id, supply_amount, vat_amount, total_amount, status, payment_method
                 FROM quote
                 WHERE id = ?
                 """, (rs, rowNum) -> new StoredQuote(
@@ -1070,7 +1133,8 @@ class QuoteApiTest {
                 rs.getBigDecimal("supply_amount"),
                 rs.getBigDecimal("vat_amount"),
                 rs.getBigDecimal("total_amount"),
-                rs.getString("status")
+                rs.getString("status"),
+                rs.getString("payment_method")
         ), quoteId);
     }
 
@@ -1088,7 +1152,7 @@ class QuoteApiTest {
 
     private static String quoteJson(long customerId, String quoteDate, String items) {
         return """
-                {"customerId":%d,"quoteDate":"%s","items":[%s]}
+                {"customerId":%d,"quoteDate":"%s","paymentMethod":"CASH","items":[%s]}
                 """.formatted(customerId, quoteDate, items);
     }
 
@@ -1115,7 +1179,8 @@ class QuoteApiTest {
             BigDecimal supplyAmount,
             BigDecimal vatAmount,
             BigDecimal totalAmount,
-            String status
+            String status,
+            String paymentMethod
     ) {
     }
 }

@@ -19,4 +19,11 @@ class MemberStatusFilterTest {
         assertFalse(MemberStatusFilter.isPendingAllowed("POST", "/api/login"));
         assertFalse(MemberStatusFilter.isPendingAllowed("POST", "/api/signup"));
     }
+
+    @Test
+    void logoutIsAlwaysRecognizedForStatusBypass() {
+        assertTrue(MemberStatusFilter.isLogout("POST", "/api/logout"));
+        assertFalse(MemberStatusFilter.isLogout("GET", "/api/logout"));
+        assertFalse(MemberStatusFilter.isLogout("POST", "/api/login"));
+    }
 }

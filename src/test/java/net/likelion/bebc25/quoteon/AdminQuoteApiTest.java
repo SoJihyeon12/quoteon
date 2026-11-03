@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -73,6 +74,7 @@ class AdminQuoteApiTest {
                 .andExpect(jsonPath("$.items[0].customerName").value("김진우"))
                 .andExpect(jsonPath("$.items[0].totalAmount").value(148500.00))
                 .andExpect(jsonPath("$.items[0].status").value("DRAFT"))
+                .andExpect(jsonPath("$.items[0].isPrivate").value(false))
                 .andExpect(jsonPath("$.items[0].supplyAmount").doesNotExist())
                 .andExpect(jsonPath("$.items[0].quoteNumber").doesNotExist())
                 .andExpect(jsonPath("$.items[0].items").doesNotExist())
@@ -80,11 +82,13 @@ class AdminQuoteApiTest {
                 .andExpect(jsonPath("$.items[1].authorName").value("김영업"))
                 .andExpect(jsonPath("$.items[1].customerName").value("김진우"))
                 .andExpect(jsonPath("$.items[1].totalAmount").value(132000.00))
+                .andExpect(jsonPath("$.items[1].isPrivate").value(false))
                 .andExpect(jsonPath("$.items[2].id").value(jsonId(earlier)))
                 .andExpect(jsonPath("$.items[2].quoteDate").value("2026-10-17"))
                 .andExpect(jsonPath("$.items[2].authorName").value("이상담"))
                 .andExpect(jsonPath("$.items[2].customerName").value("오민서"))
-                .andExpect(jsonPath("$.items[2].totalAmount").value(165000.00));
+                .andExpect(jsonPath("$.items[2].totalAmount").value(165000.00))
+                .andExpect(jsonPath("$.items[2].isPrivate").value(false));
     }
 
     @Test
@@ -107,6 +111,7 @@ class AdminQuoteApiTest {
                 .andExpect(jsonPath("$.quoteDate").value("2026-10-18"))
                 .andExpect(jsonPath("$.authorName").value("김영업"))
                 .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andExpect(jsonPath("$.isPrivate").value(false))
                 .andExpect(jsonPath("$.supplyAmount").value(240000.00))
                 .andExpect(jsonPath("$.vatAmount").value(24000))
                 .andExpect(jsonPath("$.totalAmount").value(264000.00))
@@ -131,6 +136,107 @@ class AdminQuoteApiTest {
                 .andExpect(jsonPath("$.supplier").doesNotExist())
                 .andExpect(jsonPath("$.manufacturer").doesNotExist())
                 .andExpect(jsonPath("$.validDays").doesNotExist());
+    }
+
+    @Test
+    void adminCanHideAndRestoreQuotePrivacyForSalesAccess() throws Exception {
+        SalesMember seller = loginSales("김영업");
+        long quoteId = createQuote(
+                seller,
+                insertCustomer(seller.id(), "김진우", null, null, null, null),
+                "2026-10-18",
+                itemJson(productId("SH-600"), 1)
+        );
+        MockHttpSession admin = loginAdmin().session();
+
+        mockMvc.perform(get("/api/quotes").session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(quoteId)));
+        mockMvc.perform(get("/api/quotes/{id}", quoteId).session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(jsonId(quoteId)));
+
+        mockMvc.perform(patch("/api/admin/quotes/{quoteId}/privacy", quoteId)
+                        .with(csrf())
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"isPrivate\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(jsonId(quoteId)))
+                .andExpect(jsonPath("$.isPrivate").value(true));
+
+        mockMvc.perform(get("/api/admin/quotes/{quoteId}", quoteId).session(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isPrivate").value(true));
+        mockMvc.perform(get("/api/admin/quotes").session(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].isPrivate").value(true));
+
+        mockMvc.perform(get("/api/quotes").session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.items", hasSize(0)));
+        mockMvc.perform(get("/api/quotes/{id}", quoteId).session(seller.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_PRIVATE"));
+        mockMvc.perform(get("/api/quotes/{id}/pdf", quoteId).session(seller.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_PRIVATE"));
+        mockMvc.perform(get("/api/quotes/{id}/jpeg", quoteId).session(seller.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_PRIVATE"));
+        mockMvc.perform(get("/api/quotes/{id}/png", quoteId).session(seller.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_PRIVATE"));
+        mockMvc.perform(post("/api/quotes/{id}/email", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"recipient":"buyer@quoteon.test","subject":"견적서","content":"첨부합니다."}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_PRIVATE"));
+        mockMvc.perform(get("/api/quotes/{id}/email/histories", quoteId).session(seller.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_PRIVATE"));
+        mockMvc.perform(post("/api/quotes/{id}/email/histories/1/retry", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"recipient":"buyer@quoteon.test","subject":"견적서","content":"첨부합니다."}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("QUOTE_PRIVATE"));
+
+        mockMvc.perform(patch("/api/admin/quotes/{quoteId}/privacy", quoteId)
+                        .with(csrf())
+                        .session(seller.session())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"isPrivate\":false}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        mockMvc.perform(patch("/api/admin/quotes/{quoteId}/privacy", quoteId)
+                        .with(csrf())
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"isPrivate\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isPrivate").value(false));
+
+        mockMvc.perform(get("/api/quotes").session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(jsonId(quoteId)));
+        mockMvc.perform(get("/api/quotes/{id}", quoteId).session(seller.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(jsonId(quoteId)));
+        mockMvc.perform(get("/api/quotes/{id}/pdf", quoteId).session(seller.session()))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -680,7 +786,7 @@ class AdminQuoteApiTest {
 
     private static String quoteJson(long customerId, String quoteDate, String items) {
         return """
-                {"customerId":%d,"quoteDate":"%s","items":[%s]}
+                {"customerId":%d,"quoteDate":"%s","paymentMethod":"CASH","items":[%s]}
                 """.formatted(customerId, quoteDate, items);
     }
 

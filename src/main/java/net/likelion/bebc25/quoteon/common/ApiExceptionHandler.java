@@ -33,6 +33,7 @@ import net.likelion.bebc25.quoteon.product.ProductNotActiveException;
 import net.likelion.bebc25.quoteon.product.ProductNotFoundException;
 import net.likelion.bebc25.quoteon.quote.InvalidQuoteQueryException;
 import net.likelion.bebc25.quoteon.quote.QuoteAccessDeniedException;
+import net.likelion.bebc25.quoteon.quote.QuotePrivateException;
 import net.likelion.bebc25.quoteon.quote.QuoteEmailHistoryNotFoundException;
 import net.likelion.bebc25.quoteon.quote.QuoteEmailRetryNotAllowedException;
 import net.likelion.bebc25.quoteon.quote.QuoteEmailSendException;
@@ -427,6 +428,16 @@ public class ApiExceptionHandler {
                         HttpStatus.FORBIDDEN.value(),
                         "QUOTE_ACCESS_DENIED",
                         "본인의 견적서만 조회하거나 수정할 수 있습니다."
+                ));
+    }
+
+    @ExceptionHandler(QuotePrivateException.class)
+    public ResponseEntity<ApiErrorResponse> handleQuotePrivate(QuotePrivateException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.FORBIDDEN.value(),
+                        "QUOTE_PRIVATE",
+                        "비공개 처리된 견적서입니다."
                 ));
     }
 

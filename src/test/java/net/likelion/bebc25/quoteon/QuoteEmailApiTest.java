@@ -288,7 +288,7 @@ class QuoteEmailApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-10-18","items":[%s]}
+                                {"customerId":%d,"quoteDate":"2026-10-18","paymentMethod":"CASH","items":[%s]}
                                 """.formatted(insertCustomer(seller.id(), null), itemJson(productId("SH-800"), 1))))
                 .andExpect(status().isCreated());
         mockMvc.perform(post("/api/quotes/{id}/email", quoteId)
@@ -304,7 +304,7 @@ class QuoteEmailApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-10-19","items":[%s]}
+                                {"customerId":%d,"quoteDate":"2026-10-19","paymentMethod":"CASH","items":[%s]}
                                 """.formatted(insertCustomer(seller.id(), null), itemJson(productId("SH-600"), 1))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("QUOTE_NOT_EDITABLE"));
@@ -656,7 +656,7 @@ class QuoteEmailApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-10-18","items":[%s]}
+                                {"customerId":%d,"quoteDate":"2026-10-18","paymentMethod":"CASH","items":[%s]}
                                 """.formatted(customerId, items)))
                 .andExpect(status().isCreated())
                 .andReturn();

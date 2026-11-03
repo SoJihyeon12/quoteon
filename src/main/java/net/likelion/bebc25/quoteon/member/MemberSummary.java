@@ -7,6 +7,7 @@ public record MemberSummary(
         String phone,
         String companyName,
         String role,
-        String status
+        String status,
+        String deactivationReason
 ) {
 }

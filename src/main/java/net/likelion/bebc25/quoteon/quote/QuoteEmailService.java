@@ -116,11 +116,10 @@ public class QuoteEmailService {
     }
 
     private void requireOwner(long memberId, long quoteId) {
-        QuoteAccess access = quoteRepository.findAccessById(quoteId)
-                .orElseThrow(QuoteNotFoundException::new);
-        if (access.memberId() != memberId) {
-            throw new QuoteAccessDeniedException();
-        }
+        SalesQuoteAccess.requireAccessible(
+                quoteRepository.findAccessById(quoteId).orElseThrow(QuoteNotFoundException::new),
+                memberId
+        );
     }
 
     private static QuoteEmailHistoryResponse toResponse(QuoteEmailHistory history) {

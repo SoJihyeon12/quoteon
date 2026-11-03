@@ -96,35 +96,33 @@ class SalesQuoteDocumentApiTest {
 
         String text = pdfText(pdfBytes);
         assertTrue(text.contains("견적서"));
-        assertTrue(text.contains("견적 번호"));
-        assertTrue(text.contains(quoteNumber));
         assertTrue(text.contains("견적일"));
         assertTrue(text.contains("2026-10-18"));
         assertTrue(text.contains("담당자"));
         assertTrue(text.contains("김영업"));
-        assertTrue(text.contains("고객 정보"));
+        assertTrue(text.contains("고객"));
         assertTrue(text.contains("김진우"));
-        assertTrue(text.contains("기업"));
-        assertTrue(text.contains("01012345678"));
-        assertTrue(text.contains("customer@quoteon.test"));
-        assertTrue(text.contains("서울시 강남구"));
+        assertTrue(text.contains("견적금액"));
+        assertTrue(text.contains("공급자"));
+        assertTrue(text.contains("상호"));
+        assertTrue(text.contains("에이원퍼니처 (A1 Furniture)"));
+        assertTrue(text.contains("아래와 같이 견적합니다. (VAT 별도)"));
         assertTrue(text.contains("화이트 신발장"));
         assertTrue(text.contains("SH-600"));
+        assertTrue(text.contains("제조사"));
+        assertTrue(text.contains("에이원퍼니처"));
+        assertTrue(text.contains("제품가격"));
         assertTrue(text.contains("120,000원"));
         assertTrue(text.contains("240,000원"));
         assertTrue(text.contains("24,000원"));
         assertTrue(text.contains("264,000원"));
-        assertTrue(text.contains("판매가"));
-        assertTrue(text.contains("공급가액"));
-        assertTrue(text.contains("부가세"));
-        assertTrue(text.contains("합계"));
-        assertFalse(text.contains("작성일"));
-        assertFalse(text.contains("총금액"));
-        assertFalse(text.contains("공급자"));
+        assertTrue(text.contains("공급가액 합계"));
+        assertTrue(text.contains("VAT(10%)"));
+        assertTrue(text.contains("총 주문금액"));
+        assertTrue(text.contains("본 견적서는 견적일로부터 30일간 유효합니다."));
         assertFalse(text.contains("결제방법"));
-        assertFalse(text.contains("제조사"));
-        assertFalse(text.contains("규격"));
-        assertFalse(text.contains("유효기간"));
+        assertFalse(text.contains("메모"));
+        assertFalse(text.contains("작성일"));
         assertEquals("DRAFT", statusOf(quoteId));
     }
 
@@ -185,6 +183,38 @@ class SalesQuoteDocumentApiTest {
         assertTrue(before.contains("화이트 신발장"));
         assertEquals("DRAFT", statusOf(draftId));
         assertEquals("SENT", statusOf(sentId));
+    }
+
+    @Test
+    void longProductLabelsStayReadableInSalesPdfWithoutClippingContent() throws Exception {
+        SalesMember seller = loginSales("김영업");
+        long quoteId = createQuote(
+                seller,
+                insertCustomer(seller.id()),
+                itemJson(productId("SH-600"), 1)
+        );
+        String longName = "프리미엄 화이트오크 원목 신발장 대용량 수납형 확장모델";
+        String longCode = "SH-600-WHITE-OAK-XL-STORAGE-2026";
+        jdbcTemplate.update(
+                """
+                UPDATE quote_item
+                SET product_name = ?, product_code = ?
+                WHERE quote_id = ?
+                """,
+                longName,
+                longCode,
+                quoteId
+        );
+        byte[] pdf = download(seller.session(), quoteId, "pdf");
+        String text = pdfText(pdf).replaceAll("\\s+", "");
+        assertTrue(text.contains("프리미엄화이트오크"));
+        assertTrue(text.contains("원목신발장"));
+        assertTrue(text.contains("대용량수납형확장모델"));
+        assertTrue(text.contains("SH-600-WHITE-OAK-XL-STORAGE-2026"));
+        assertTrue(text.contains("에이원퍼니처"));
+        assertTrue(text.contains("120,000원"));
+        assertSameFirstPageSize(pdf, download(seller.session(), quoteId, "png"));
+        assertSameFirstPageSize(pdf, download(seller.session(), quoteId, "jpeg"));
     }
 
     @Test
@@ -308,7 +338,7 @@ class SalesQuoteDocumentApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-10-18","items":[%s]}
+                                {"customerId":%d,"quoteDate":"2026-10-18","paymentMethod":"CASH","items":[%s]}
                                 """.formatted(customerId, items)))
                 .andExpect(status().isCreated())
                 .andReturn();

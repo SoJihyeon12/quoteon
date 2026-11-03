@@ -30,6 +30,10 @@ public class MemberStatusFilter extends OncePerRequestFilter {
         if (HttpMethod.GET.matches(method) && "/api/me".equals(path)) {
             return true;
         }
+        return isLogout(method, path);
+    }
+
+    static boolean isLogout(String method, String path) {
         return HttpMethod.POST.matches(method) && "/api/logout".equals(path);
     }
 
@@ -46,6 +50,11 @@ public class MemberStatusFilter extends OncePerRequestFilter {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || authentication instanceof AnonymousAuthenticationToken) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        // 이용 제한·비활성·삭제된 회원도 로그아웃은 항상 처리한다.
+        if (isLogout(request.getMethod(), request.getRequestURI())) {
             filterChain.doFilter(request, response);
             return;
         }

@@ -299,7 +299,7 @@ class AdminQuoteDocumentApiTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-10-18","items":[%s]}
+                                {"customerId":%d,"quoteDate":"2026-10-18","paymentMethod":"CASH","items":[%s]}
                                 """.formatted(customerId, items)))
                 .andExpect(status().isCreated())
                 .andReturn();

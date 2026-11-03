@@ -17,6 +17,7 @@ public record QuoteResponse(
         LocalDate quoteDate,
         LocalDateTime createdAt,
         String memo,
+        String paymentMethod,
         List<QuoteItemResponse> items
 ) {
 }

@@ -412,7 +412,7 @@ class AdminProductSaleApiTest {
 
     private static String quoteJson(long customerId, String item) {
         return """
-                {"customerId":%d,"quoteDate":"2026-10-30","items":[%s]}
+                {"customerId":%d,"quoteDate":"2026-10-30","paymentMethod":"CASH","items":[%s]}
                 """.formatted(customerId, item);
     }
 

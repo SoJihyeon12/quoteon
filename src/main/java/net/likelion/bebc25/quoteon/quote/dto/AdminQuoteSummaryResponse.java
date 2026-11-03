@@ -1,5 +1,7 @@
 package net.likelion.bebc25.quoteon.quote.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -9,6 +11,7 @@ public record AdminQuoteSummaryResponse(
         String authorName,
         String customerName,
         BigDecimal totalAmount,
-        String status
+        String status,
+        @JsonProperty("isPrivate") boolean isPrivate
 ) {
 }

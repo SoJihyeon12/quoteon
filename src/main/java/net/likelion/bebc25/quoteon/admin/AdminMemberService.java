@@ -1,5 +1,6 @@
 package net.likelion.bebc25.quoteon.admin;
 
+import net.likelion.bebc25.quoteon.admin.dto.DeactivateMemberRequest;
 import net.likelion.bebc25.quoteon.admin.dto.MemberSummaryPageResponse;
 import net.likelion.bebc25.quoteon.admin.dto.MemberSummaryResponse;
 import net.likelion.bebc25.quoteon.admin.dto.PendingMemberPageResponse;
@@ -8,6 +9,7 @@ import net.likelion.bebc25.quoteon.admin.dto.UpdateMemberRequest;
 import net.likelion.bebc25.quoteon.auth.dto.MemberResponse;
 import net.likelion.bebc25.quoteon.member.EmailAlreadyExistsException;
 import net.likelion.bebc25.quoteon.member.Member;
+import net.likelion.bebc25.quoteon.member.MemberDeactivationReason;
 import net.likelion.bebc25.quoteon.member.MemberNotFoundException;
 import net.likelion.bebc25.quoteon.member.MemberNotPendingException;
 import net.likelion.bebc25.quoteon.member.MemberStatusConflictException;
@@ -97,13 +99,23 @@ public class AdminMemberService {
                 .orElseThrow(MemberNotFoundException::new);
     }
 
-    public MemberSummaryResponse deactivate(long memberId) {
-        return changeStatus(
-                memberId,
-                MemberStatus.INACTIVE,
-                MemberStatus.ACTIVE,
-                "활성 회원만 비활성화할 수 있습니다."
-        );
+    public MemberSummaryResponse deactivate(long memberId, DeactivateMemberRequest request) {
+        String storedReason;
+        try {
+            storedReason = MemberDeactivationReason.formatStoredReason(request.reasonCode(), request.reasonDetail());
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidMemberQueryException(exception.getMessage());
+        }
+        int updated = memberRepository.deactivateIfActive(memberId, storedReason);
+        if (updated == 1) {
+            return memberRepository.findSummaryById(memberId)
+                    .map(MemberSummaryResponse::from)
+                    .orElseThrow(MemberNotFoundException::new);
+        }
+        if (memberRepository.findSummaryById(memberId).isEmpty()) {
+            throw new MemberNotFoundException();
+        }
+        throw new MemberStatusConflictException("활성 회원만 비활성화할 수 있습니다.");
     }
 
     public MemberSummaryResponse activate(long memberId) {

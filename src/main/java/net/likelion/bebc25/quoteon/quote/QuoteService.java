@@ -70,10 +70,7 @@ public class QuoteService {
     public QuoteResponse get(long memberId, long quoteId) {
         QuoteAccess access = quoteRepository.findAccessById(quoteId)
                 .orElseThrow(QuoteNotFoundException::new);
-        if (access.memberId() != memberId) {
-            throw new QuoteAccessDeniedException();
-        }
-        return access.quote();
+        return SalesQuoteAccess.requireAccessible(access, memberId).quote();
     }
 
     public QuoteResponse create(long memberId, CreateQuoteRequest request) {
@@ -108,11 +105,10 @@ public class QuoteService {
     }
 
     private QuoteResponse replaceQuote(long memberId, long quoteId, CreateQuoteRequest request) {
-        QuoteAccess access = quoteRepository.findAccessById(quoteId)
-                .orElseThrow(QuoteNotFoundException::new);
-        if (access.memberId() != memberId) {
-            throw new QuoteAccessDeniedException();
-        }
+        QuoteAccess access = SalesQuoteAccess.requireAccessible(
+                quoteRepository.findAccessById(quoteId).orElseThrow(QuoteNotFoundException::new),
+                memberId
+        );
         if (!QuoteRepository.DRAFT.equals(access.quote().status())) {
             throw new QuoteNotEditableException();
         }
@@ -125,7 +121,8 @@ public class QuoteService {
                 priced.vatAmount(),
                 priced.totalAmount(),
                 request.quoteDate(),
-                normalize(request.memo())
+                normalize(request.memo()),
+                request.paymentMethod()
         );
         if (updated != 1) {
             throw new QuoteNotFoundException();
@@ -230,7 +227,8 @@ public class QuoteService {
                         vatAmount,
                         totalAmount,
                         request.quoteDate(),
-                        normalize(request.memo())
+                        normalize(request.memo()),
+                        request.paymentMethod()
                 );
             } catch (DuplicateKeyException exception) {
                 lastConflict = exception;

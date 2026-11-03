@@ -14,6 +14,7 @@
 | company_name | VARCHAR(255) | NULL | 회사명 |
 | role | VARCHAR(30) | NOT NULL | 회원 권한 |
 | status | VARCHAR(20) | NOT NULL | 회원 상태 |
+| deactivation_reason | VARCHAR(255) | NULL | 관리자 비활성화 사유(관리자 전용) |
 | created_at | DATETIME | NOT NULL | 생성 일시 |
 | updated_at | DATETIME | NOT NULL | 수정 일시 |
 
@@ -73,6 +74,8 @@
 | total_amount | DECIMAL(14,2) | NOT NULL | 총금액 |
 | status | VARCHAR(20) | NOT NULL | 견적 상태 |
 | memo | TEXT | NULL | 견적 작성 시 입력한 메모 |
+| payment_method | VARCHAR(20) | NULL | 내부 관리용 결제방법. CASH(현금), CARD(신용카드). 기존 견적은 NULL |
+| is_private | TINYINT(1) | NOT NULL, DEFAULT 0 | 관리자 비공개 여부. 0=공개, 1=비공개. 기존 견적은 공개 |
 | quote_date | DATE | NOT NULL | 견적 작성일 |
 | created_at | DATETIME | NOT NULL | 생성 일시 |
 | updated_at | DATETIME | NOT NULL | 수정 일시 |

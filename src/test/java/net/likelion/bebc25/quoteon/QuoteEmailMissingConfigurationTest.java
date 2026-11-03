@@ -107,7 +107,7 @@ class QuoteEmailMissingConfigurationTest {
                         .session(seller.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"customerId":%d,"quoteDate":"2026-10-18","items":[{"productId":%d,"quantity":1}]}
+                                {"customerId":%d,"quoteDate":"2026-10-18","paymentMethod":"CASH","items":[{"productId":%d,"quantity":1}]}
                                 """.formatted(customerId, productId("SH-600"))))
                 .andExpect(status().isCreated())
                 .andReturn();

@@ -27,6 +27,7 @@ public class QuoteRepository {
 
     private static final String LIST_FILTER = """
             WHERE q.member_id = ?
+              AND q.is_private = 0
               AND (? = 0 OR c.name LIKE ? ESCAPE '\\\\')
               AND (? = 0 OR q.quote_date = ?)
             """;
@@ -45,14 +46,15 @@ public class QuoteRepository {
             BigDecimal vatAmount,
             BigDecimal totalAmount,
             LocalDate quoteDate,
-            String memo
+            String memo,
+            String paymentMethod
     ) {
         String sql = """
                 INSERT INTO quote (
                     quote_number, member_id, customer_id,
-                    supply_amount, vat_amount, total_amount, status, quote_date, memo
+                    supply_amount, vat_amount, total_amount, status, quote_date, memo, payment_method
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
@@ -66,6 +68,7 @@ public class QuoteRepository {
             statement.setString(7, DRAFT);
             statement.setDate(8, Date.valueOf(quoteDate));
             statement.setString(9, memo);
+            statement.setString(10, paymentMethod);
             return statement;
         }, keyHolder);
         Number key = keyHolder.getKey();
@@ -83,11 +86,12 @@ public class QuoteRepository {
             BigDecimal vatAmount,
             BigDecimal totalAmount,
             LocalDate quoteDate,
-            String memo
+            String memo,
+            String paymentMethod
     ) {
         String sql = """
                 UPDATE quote
-                SET customer_id = ?, supply_amount = ?, vat_amount = ?, total_amount = ?, quote_date = ?, memo = ?
+                SET customer_id = ?, supply_amount = ?, vat_amount = ?, total_amount = ?, quote_date = ?, memo = ?, payment_method = ?
                 WHERE id = ? AND member_id = ?
                 """;
         return jdbcTemplate.update(
@@ -98,6 +102,7 @@ public class QuoteRepository {
                 totalAmount,
                 Date.valueOf(quoteDate),
                 memo,
+                paymentMethod,
                 quoteId,
                 memberId
         );
@@ -138,7 +143,8 @@ public class QuoteRepository {
     public Optional<QuoteAccess> findAccessById(long id) {
         String sql = """
                 SELECT q.id, q.member_id, q.quote_number, q.customer_id, c.name AS customer_name,
-                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at, q.memo
+                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at, q.memo,
+                       q.payment_method, q.is_private
                 FROM quote q
                 INNER JOIN customer c ON c.id = q.customer_id
                 WHERE q.id = ?
@@ -148,7 +154,7 @@ public class QuoteRepository {
             return Optional.empty();
         }
         QuoteHeader header = headers.get(0);
-        return Optional.of(new QuoteAccess(header.memberId(), toResponse(header, findItems(id))));
+        return Optional.of(new QuoteAccess(header.memberId(), header.isPrivate(), toResponse(header, findItems(id))));
     }
 
     public long countByMember(QuoteListQuery query) {
@@ -167,7 +173,8 @@ public class QuoteRepository {
     public List<QuoteSummaryResponse> findByMember(QuoteListQuery query, int limit, long offset) {
         String sql = """
                 SELECT q.id, q.member_id, q.quote_number, q.customer_id, c.name AS customer_name,
-                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at, q.memo
+                       q.supply_amount, q.vat_amount, q.total_amount, q.status, q.quote_date, q.created_at, q.memo,
+                       q.payment_method, q.is_private
                 FROM quote q
                 INNER JOIN customer c ON c.id = q.customer_id
                 """ + LIST_FILTER + """
@@ -232,7 +239,9 @@ public class QuoteRepository {
                 rs.getString("status"),
                 rs.getObject("quote_date", LocalDate.class),
                 rs.getObject("created_at", LocalDateTime.class),
-                rs.getString("memo")
+                rs.getString("memo"),
+                rs.getString("payment_method"),
+                rs.getBoolean("is_private")
         );
     }
 
@@ -249,6 +258,7 @@ public class QuoteRepository {
                 header.quoteDate(),
                 header.createdAt(),
                 header.memo(),
+                header.paymentMethod(),
                 items
         );
     }
@@ -286,7 +296,9 @@ public class QuoteRepository {
             String status,
             LocalDate quoteDate,
             LocalDateTime createdAt,
-            String memo
+            String memo,
+            String paymentMethod,
+            boolean isPrivate
     ) {
     }
 }

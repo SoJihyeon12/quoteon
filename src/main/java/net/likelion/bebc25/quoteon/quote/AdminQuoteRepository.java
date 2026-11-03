@@ -61,7 +61,7 @@ public class AdminQuoteRepository {
     public List<AdminQuoteSummaryResponse> find(AdminQuoteFilter filter, int limit, long offset) {
         String sql = """
                 SELECT q.id, q.quote_date, m.name AS author_name, c.name AS customer_name,
-                       q.total_amount, q.status
+                       q.total_amount, q.status, q.is_private
                 FROM quote q
                 INNER JOIN member m ON m.id = q.member_id
                 INNER JOIN customer c ON c.id = q.customer_id
@@ -79,7 +79,8 @@ public class AdminQuoteRepository {
                 rs.getString("author_name"),
                 rs.getString("customer_name"),
                 rs.getBigDecimal("total_amount"),
-                rs.getString("status")
+                rs.getString("status"),
+                rs.getBoolean("is_private")
         ));
     }
 
@@ -87,10 +88,14 @@ public class AdminQuoteRepository {
         return jdbcTemplate.update("DELETE FROM quote WHERE id = ?", quoteId);
     }
 
+    public int updatePrivacy(long quoteId, boolean isPrivate) {
+        return jdbcTemplate.update("UPDATE quote SET is_private = ? WHERE id = ?", isPrivate, quoteId);
+    }
+
     public Optional<AdminQuoteDetailResponse> findDetail(long quoteId) {
         String sql = """
                 SELECT q.id, q.quote_number, q.quote_date, m.name AS author_name, q.status, q.memo,
-                       q.supply_amount, q.vat_amount, q.total_amount,
+                       q.supply_amount, q.vat_amount, q.total_amount, q.is_private,
                        c.id AS customer_id, c.name AS customer_name, c.customer_type,
                        c.phone, c.email, c.address
                 FROM quote q
@@ -111,6 +116,7 @@ public class AdminQuoteRepository {
                         rs.getBigDecimal("supply_amount"),
                         rs.getBigDecimal("vat_amount"),
                         rs.getBigDecimal("total_amount"),
+                        rs.getBoolean("is_private"),
                         new AdminQuoteCustomerResponse(
                                 rs.getLong("customer_id"),
                                 rs.getString("customer_name"),
@@ -136,6 +142,7 @@ public class AdminQuoteRepository {
                 header.supplyAmount(),
                 header.vatAmount(),
                 header.totalAmount(),
+                header.isPrivate(),
                 header.customer(),
                 findItems(header.id())
         ));

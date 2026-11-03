@@ -9,7 +9,8 @@ public record MemberSummaryResponse(
         String phone,
         String companyName,
         String role,
-        String status
+        String status,
+        String deactivationReason
 ) {
 
     public static MemberSummaryResponse from(MemberSummary member) {
@@ -20,7 +21,8 @@ public record MemberSummaryResponse(
                 member.phone(),
                 member.companyName(),
                 member.role(),
-                member.status()
+                member.status(),
+                member.deactivationReason()
         );
     }
 }

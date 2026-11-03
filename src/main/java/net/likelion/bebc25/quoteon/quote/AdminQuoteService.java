@@ -66,6 +66,13 @@ public class AdminQuoteService {
         return adminQuoteRepository.findDetail(quoteId).orElseThrow(QuoteNotFoundException::new);
     }
 
+    public AdminQuoteDetailResponse updatePrivacy(long quoteId, boolean isPrivate) {
+        if (adminQuoteRepository.updatePrivacy(quoteId, isPrivate) == 0) {
+            throw new QuoteNotFoundException();
+        }
+        return get(quoteId);
+    }
+
     public void delete(long quoteId) {
         if (adminQuoteRepository.deleteById(quoteId) == 0) {
             throw new QuoteNotFoundException();

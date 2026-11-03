@@ -60,7 +60,9 @@ class AdminMemberApiTest {
         mockMvc.perform(post("/api/admin/members/1/approve").with(csrf()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
-        mockMvc.perform(post("/api/admin/members/1/deactivate").with(csrf()))
+        mockMvc.perform(post("/api/admin/members/1/deactivate").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
         mockMvc.perform(post("/api/admin/members/1/activate").with(csrf()))
@@ -94,7 +96,9 @@ class AdminMemberApiTest {
         mockMvc.perform(post("/api/admin/members/1/approve").with(csrf()).session(session))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-        mockMvc.perform(post("/api/admin/members/1/deactivate").with(csrf()).session(session))
+        mockMvc.perform(post("/api/admin/members/1/deactivate").with(csrf()).session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         mockMvc.perform(post("/api/admin/members/1/activate").with(csrf()).session(session))
@@ -145,7 +149,9 @@ class AdminMemberApiTest {
                         .content(updateJson("이름", target.email(), "01012345678", "토큰회사", "ROLE_USER")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("CSRF"));
-        mockMvc.perform(post("/api/admin/members/" + target.id() + "/deactivate").session(admin))
+        mockMvc.perform(post("/api/admin/members/" + target.id() + "/deactivate").session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("CSRF"));
         mockMvc.perform(post("/api/admin/members/" + target.id() + "/activate").session(admin))
@@ -809,7 +815,9 @@ class AdminMemberApiTest {
 
         mockMvc.perform(post("/api/admin/members/" + seller.id() + "/deactivate")
                         .with(csrf())
-                        .session(admin))
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(jsonId(seller.id())))
                 .andExpect(jsonPath("$.name").value(before.name()))
@@ -818,6 +826,7 @@ class AdminMemberApiTest {
                 .andExpect(jsonPath("$.companyName").value(before.companyName()))
                 .andExpect(jsonPath("$.role").value("ROLE_USER"))
                 .andExpect(jsonPath("$.status").value("INACTIVE"))
+                .andExpect(jsonPath("$.deactivationReason").value("퇴사 처리"))
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.createdAt").doesNotExist())
                 .andExpect(content().string(not(containsString(before.password()))))
@@ -831,6 +840,7 @@ class AdminMemberApiTest {
                 before.role(),
                 "INACTIVE"
         ), stored(seller.id()));
+        assertEquals("퇴사 처리", deactivationReason(seller.id()));
         assertEquals(customers, countRows("customer", seller.id()));
         assertEquals(quotes, countRows("quote", seller.id()));
 
@@ -857,7 +867,9 @@ class AdminMemberApiTest {
 
         mockMvc.perform(post("/api/admin/members/" + seller.id() + "/deactivate")
                         .with(csrf())
-                        .session(admin))
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("MEMBER_STATUS_CONFLICT"))
                 .andExpect(jsonPath("$.message").value("활성 회원만 비활성화할 수 있습니다."));
@@ -872,6 +884,7 @@ class AdminMemberApiTest {
                 .andExpect(jsonPath("$.email").value(before.email()))
                 .andExpect(jsonPath("$.role").value("ROLE_USER"))
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.deactivationReason").value(nullValue()))
                 .andExpect(jsonPath("$.password").doesNotExist());
         assertEquals(new StoredMember(
                 before.email(),
@@ -882,6 +895,7 @@ class AdminMemberApiTest {
                 before.role(),
                 "ACTIVE"
         ), stored(seller.id()));
+        assertEquals(null, deactivationReason(seller.id()));
         assertEquals(customers, countRows("customer", seller.id()));
         assertEquals(quotes, countRows("quote", seller.id()));
 
@@ -909,11 +923,15 @@ class AdminMemberApiTest {
         MockHttpSession quoteSession = activateAndLogin(quoteReader);
         mockMvc.perform(post("/api/admin/members/" + seller.id() + "/deactivate")
                         .with(csrf())
-                        .session(admin))
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/admin/members/" + quoteReader.id() + "/deactivate")
                         .with(csrf())
-                        .session(admin))
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/customers").session(sellerSession))
@@ -936,7 +954,9 @@ class AdminMemberApiTest {
 
         mockMvc.perform(post("/api/admin/members/" + pending.id() + "/deactivate")
                         .with(csrf())
-                        .session(admin))
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("MEMBER_STATUS_CONFLICT"))
                 .andExpect(jsonPath("$.message").value("활성 회원만 비활성화할 수 있습니다."));
@@ -950,7 +970,9 @@ class AdminMemberApiTest {
 
         mockMvc.perform(post("/api/admin/members/" + rejected.id() + "/deactivate")
                         .with(csrf())
-                        .session(admin))
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("MEMBER_STATUS_CONFLICT"));
         mockMvc.perform(post("/api/admin/members/" + rejected.id() + "/activate")
@@ -972,7 +994,9 @@ class AdminMemberApiTest {
 
         mockMvc.perform(post("/api/admin/members/" + missingId + "/deactivate")
                         .with(csrf())
-                        .session(admin))
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MEMBER_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("회원을 찾을 수 없습니다."));
@@ -992,7 +1016,9 @@ class AdminMemberApiTest {
 
         mockMvc.perform(post("/api/admin/members/" + admin.id() + "/deactivate")
                         .with(csrf())
-                        .session(session))
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson("RESIGNED")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("ROLE_ADMIN"))
                 .andExpect(jsonPath("$.status").value("INACTIVE"))
@@ -1068,6 +1094,14 @@ class AdminMemberApiTest {
         ), id);
     }
 
+    private String deactivationReason(long id) {
+        return jdbcTemplate.queryForObject(
+                "SELECT deactivation_reason FROM member WHERE id = ?",
+                String.class,
+                id
+        );
+    }
+
     private MockHttpSession activateAndLogin(Applicant applicant) throws Exception {
         int updated = jdbcTemplate.update(
                 "UPDATE member SET status = 'ACTIVE' WHERE id = ? AND status = 'PENDING'",
@@ -1130,6 +1164,21 @@ class AdminMemberApiTest {
                 String.class,
                 id
         );
+    }
+
+    private static String deactivateJson(String reasonCode) {
+        return deactivateJson(reasonCode, null);
+    }
+
+    private static String deactivateJson(String reasonCode, String reasonDetail) {
+        if (reasonDetail == null) {
+            return """
+                    {"reasonCode":"%s"}
+                    """.formatted(reasonCode);
+        }
+        return """
+                {"reasonCode":"%s","reasonDetail":"%s"}
+                """.formatted(reasonCode, reasonDetail);
     }
 
     private static String updateJson(String name, String email, String phone, String companyName, String role) {
