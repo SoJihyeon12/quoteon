@@ -72,6 +72,7 @@
 | vat_amount | DECIMAL(14,2) | NOT NULL | 부가세 |
 | total_amount | DECIMAL(14,2) | NOT NULL | 총금액 |
 | status | VARCHAR(20) | NOT NULL | 견적 상태 |
+| memo | TEXT | NULL | 견적 작성 시 입력한 메모 |
 | quote_date | DATE | NOT NULL | 견적 작성일 |
 | created_at | DATETIME | NOT NULL | 생성 일시 |
 | updated_at | DATETIME | NOT NULL | 수정 일시 |
@@ -85,6 +86,8 @@
 | product_id | BIGINT | FK, NULL 가능 | 제품 ID |
 | product_name | VARCHAR(255) | NOT NULL | 견적 작성 당시 제품명 |
 | product_code | VARCHAR(100) | NOT NULL | 견적 작성 당시 제품 코드 |
+| specification | VARCHAR(500) | NULL | 견적 작성 당시 제품 규격 |
+| specification_source | VARCHAR(20) | NULL | SNAPSHOT은 저장 당시 규격, RECOVERED는 기존 견적을 현재 제품 규격으로 채운 값 |
 | sale_price | DECIMAL(12,2) | NOT NULL | 견적 작성 당시 판매 가격 |
 | quantity | INT | NOT NULL | 수량 |
 | amount | DECIMAL(14,2) | NOT NULL | 항목별 공급가액 |
@@ -100,7 +103,21 @@
 | status | VARCHAR(20) | NOT NULL | 발송 결과 |
 | failure_reason | TEXT | NULL | 발송 실패 사유 |
 | sent_at | DATETIME | NULL | 발송 성공 일시 |
-| created_at | DATETIME | NOT NULL | 발송 시도 기록 일시 |
+| created_at | DATETIME | NOT NULL | 발송 시도 요청 일시 |
+
+### 1.1.8 제품 즐겨찾기 (product_favorite)
+
+> PRD REQ-PRODUCT-05·06 및 와이어프레임 2.10~2.12를 위해 추가. 기존 ERD에는 즐겨찾기 테이블이 없어 member·product 관계를 기준으로 회원별 관심 제품을 저장한다.
+
+| 컬럼명 | 데이터 타입 | 제약조건 | 설명 |
+|---|---|---|---|
+| id | BIGINT | PK, AUTO_INCREMENT | 즐겨찾기 ID |
+| member_id | BIGINT | FK, NOT NULL | 회원 ID |
+| product_id | BIGINT | FK, NOT NULL | 제품 ID |
+| created_at | DATETIME | NOT NULL | 등록 일시 |
+
+- UNIQUE (member_id, product_id)로 회원·제품 중복 등록을 막는다.
+- 회원 또는 제품 삭제 시 즐겨찾기 행도 함께 삭제한다 (ON DELETE CASCADE).
 
 ## 1.2 테이블 관계
 
@@ -108,11 +125,13 @@
 |---|---|---|---|
 | member | customer | 1:N | 한 회원이 여러 고객 정보를 관리한다. |
 | member | quote | 1:N | 한 회원이 여러 견적서를 작성한다. |
+| member | product_favorite | 1:N | 한 회원이 여러 제품을 즐겨찾기에 등록한다. |
 | category | product | 1:N | 하나의 카테고리에 여러 제품이 속할 수 있다. |
 | category | category | 1:N | 하나의 상위 카테고리에 여러 하위 카테고리가 속할 수 있다. |
 | customer | quote | 1:N | 한 고객에게 여러 견적서를 작성할 수 있다. |
 | quote | quote_item | 1:N | 하나의 견적서에 여러 견적 항목이 포함된다. |
 | product | quote_item | 1:N | 하나의 제품이 여러 견적 항목에서 사용될 수 있다. |
+| product | product_favorite | 1:N | 하나의 제품이 여러 회원의 즐겨찾기에 등록될 수 있다. |
 | quote | quote_email_history | 1:N | 하나의 견적서에 여러 이메일 발송 이력이 생성될 수 있다. |
 
 ## 1.3 주요 제약조건 및 처리 기준
